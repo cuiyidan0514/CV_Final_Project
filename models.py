@@ -1,40 +1,53 @@
 import torch
 import torch.nn as nn
 import torchvision.models as models
+from torchvision.models import ResNet18_Weights
 
 '''
 先让gpt写了一个简单的目标检测模型来占位
+用预训练好的resnet18作为backbone，增添一个特征处理层，一个bbox回归头，一个bbox置信度预测头，一个label分类头
+三个预测头得到的bbox，confidence，label即为模型输出
 '''
 
 class ObjectDetector(nn.Module):
     '''
     input: 
-        images: PC screenshot 
-        configs (Dict, optional): 配置参数
+        num_classes: 标签的数量，默认为5，4个组件以及1个噪声 
+        num_bboxes: 每张图像预测的组件的数量，假设为10
     output:
-        Dict: 包含布局信息的字典  
+        bbox_pred, confidence, label_pred：预测的bbox,对bbox的置信度，和对应的label 
     '''
-    def __init__(self, num_classes=4, pretrained=True):
-        super().__init__(self, num_classes=4, pretrained=True)
+    def __init__(self, num_classes=5, num_bboxes=10, pretrained=True):
+        super().__init__()
         
-        backbone = models.resnet18(pretrained=pretrained)   
-        self.backbone = nn.Sequential(*list(backbone.children())[:-2])  
+        self.num_classes = num_classes
+        self.num_boxes = num_bboxes
+        
+        backbone = models.resnet18(weights=ResNet18_Weights.DEFAULT if pretrained else None)   
+        self.backbone = nn.Sequential(*list(backbone.children())[:-2]) #去掉最后的全连接层和分类层  
         self.feature_map = nn.Sequential(  
             nn.Conv2d(512, 256, kernel_size=3, padding=1),  
             nn.BatchNorm2d(256),  
             nn.ReLU(inplace=True)  
         )  
-        # 组件边界框回归头  
+        # 组件边界框回归头,每个bbox都需要两个点的坐标，即[x_min, y_min, x_max, y_max]   
         self.bbox_head = nn.Sequential(  
             nn.Linear(256, 128),  
             nn.ReLU(inplace=True),  
-            nn.Linear(128, 4)  # [x_min, y_min, x_max, y_max]  
+            nn.Linear(128, num_bboxes * 4) 
+        )
+        # 置信度预测头,表明对每个bbox的置信度  
+        self.confidence_head = nn.Sequential(  
+            nn.Linear(256, 128),  
+            nn.ReLU(inplace=True),  
+            nn.Linear(128, num_bboxes),  
+            nn.Sigmoid()
         )  
-        # 组件属性分类头,按助教说法应该是4个分类头:clickable,focusable,scrollable,non-interactable  
+        # 组件属性分类头,按助教说法应该是4个分类头:clickable,selectable,scrollable,disabled  
         self.cls_head = nn.Sequential(  
             nn.Linear(256, 128),  
             nn.ReLU(inplace=True),  
-            nn.Linear(128, num_classes)  
+            nn.Linear(128, num_bboxes * num_classes)  
         )  
         self.apply(self._init_weights)
 
@@ -49,65 +62,52 @@ class ObjectDetector(nn.Module):
             nn.init.constant_(m.weight, 1)  
             nn.init.constant_(m.bias, 0) 
 
-    def forward(self, x, configs=None):
+    def forward(self, x):
         features = self.backbone(x)
         features = self.feature_map(features)
         features = torch.mean(features, dim=[2,3])
+        # 预测bbox
         bbox_pred = self.bbox_head(features)
-        cls_pred = self.cls_head(features)
-        return {
-            'bbox':bbox_pred,
-            'cls':cls_pred
-        }
+        bbox_pred = bbox_pred.view(-1, self.num_boxes, 4)
+        # 预测label
+        label_pred = self.cls_head(features)
+        label_pred = label_pred.view(-1, self.num_boxes, self.num_classes)
+        label_pred = torch.softmax(label_pred, dim=2)
+        max_probs, max_labels = label_pred.max(dim=2)
+        # bbox的置信度
+        confidence = self.confidence_head(features)  
+        confidence = confidence.view(-1, self.num_boxes)  
+        
+        return bbox_pred, confidence, max_labels
     
-def process_detections(outputs, conf_threshold=0.5,iou_threshold=0.5):
+def process_detections(bbox_pred, label_pred, conf_threshold=0.3):
     """  
-    对模型预测的bbox和attribute再做一个后处理 
+    对模型预测的bbox和attribute再做一个后处理，转换为需要的格式 
     Args:  
-        outputs: 模型输出  
         conf_threshold: 置信度阈值  
-        iou_threshold: IoU阈值  
     Returns:  
-        处理后的outputs  
-    """  
-    bboxes = outputs['bbox']  
-    cls_scores = outputs['cls']  
+        [图像名，预测坐标，预测坐标自信度，预测标签]  
+    """   
+    max_probs, max_labels = label_pred.max(dim=2)
     
-    probs = torch.softmax(cls_scores, dim=1)   
-    max_probs, labels = probs.max(dim=1)  
+    bboxes = []
+    labels = []
+    scores = []  
     
-    valid_detections = []  
+    # 对于预测到的所有bbox和label，只有对label的置信度高于阈值，才认为这是一个有效的预测
+    for i in range(bbox_pred.shape[1]):  
+        if max_probs[0][i] > conf_threshold:
+            bboxes.append(bbox_pred[0][i])
+            labels.append(max_labels[0][i])
+            scores.append(max_probs[0][i])
     
-    for i in range(bboxes.size(0)):  
-        if max_probs[i] > conf_threshold: # 对于每个组件,只有当其对某个属性的概率预测值大于阈值时,才认为这是一个合法的组件 
-            detection = {  
-                'bbox': bboxes[i],  
-                'label': labels[i],  
-                'score': max_probs[i]  
-            }  
-            valid_detections.append(detection)  
-    
-    return valid_detections
+    return bboxes, labels, scores
 
-def detection_loss(outputs, targets):
-    # bbox loss
-    bbox_loss = nn.functional.smooth_l1_loss(  
-        outputs['bbox'],   
-        targets['boxes']  
-    )  
-    
-    # attribute loss  
-    cls_loss = nn.functional.cross_entropy(  
-        outputs['cls'],   
-        targets['labels']  
-    )  
-    
-    # total loss  
-    total_loss = bbox_loss + cls_loss  
-    
-    return total_loss
+def detection_loss(pred_bbox, pred_label, scores, bboxs, labels):
+    # bbox_loss = nn.functional.smooth_l1_loss(pred_bbox,bboxs)  
+    # label_loss = nn.functional.cross_entropy(pred_label,labels)  
+    # total_loss = bbox_loss + label_loss  
+    # return total_loss
+    pass
 
-models = {
-    'object_detector':ObjectDetector
-}
     
