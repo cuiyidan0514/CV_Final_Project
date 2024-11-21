@@ -59,7 +59,37 @@ class ObjectDetector(nn.Module):
             'bbox':bbox_pred,
             'cls':cls_pred
         }
-    
+
+
+# refer to https://huggingface.co/docs/transformers/model_doc/grounding-dino
+import requests
+import torch
+from PIL import Image
+from transformers import AutoProcessor, AutoModelForZeroShotObjectDetection
+
+class GroundingDINO(nn.Module):
+    def __init__(self, model_id="IDEA-Research/grounding-dino-tiny", device="cuda"):
+        super().__init__()
+        self.model_id = model_id
+        self.device = device
+        self.processor = AutoProcessor.from_pretrained(model_id)
+        self.model = AutoModelForZeroShotObjectDetection.from_pretrained(model_id).to(device)
+
+    def forward(self, x, configs=None):
+        inputs = self.processor(images=x, text=configs, return_tensors="pt").to(self.device)
+        with torch.no_grad():
+            outputs = self.model(**inputs)
+        results = self.processor.post_process_grounded_object_detection(
+            outputs,
+            inputs.input_ids,
+            box_threshold=0.4,
+            text_threshold=0.3,
+            target_sizes=[x.size[::-1]]
+        )
+        return results
+
+
+
 def process_detections(outputs, conf_threshold=0.5,iou_threshold=0.5):
     """  
     对模型预测的bbox和attribute再做一个后处理 
