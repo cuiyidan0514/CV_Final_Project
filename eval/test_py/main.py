@@ -5,7 +5,7 @@ from test_py.read_datas.read import *
 from test_py.visualization.visualization import drawing
 
 
-def TP_P_num_sum(csv_results, threshod):
+def TP_P_num_sum(csv_results, threshod, IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_IMG_ROOT,CSV_PATH,CLASS_NAME):
     TP_num_sum = 0
     P_num_sum = 0
     threshod = float('%.4f' % threshod)
@@ -120,7 +120,7 @@ def run(IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_IMG_ROOT,CSV_PATH,CLASS_NAME):
         csv_write.writerow(("threshod", "precision", "recall", "TP_num_sum", "P_num_sum"))
         for threshod in np.linspace(0.1, 1.0, 181):  # 设置阈值个数
             print("threshod: %f " % threshod)
-            TP_num_sum, P_num_sum = TP_P_num_sum(csv_results, threshod)
+            TP_num_sum, P_num_sum = TP_P_num_sum(csv_results, threshod, IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_IMG_ROOT,CSV_PATH,CLASS_NAME)
             print(TP_num_sum, P_num_sum)
             precision = float(TP_num_sum) / (P_num_sum + 1e-05)
             recall = float(TP_num_sum) / (group_truth_num_sum + 1e-05)
@@ -143,14 +143,14 @@ def run(IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_IMG_ROOT,CSV_PATH,CLASS_NAME):
 
 
 
-if __name__ == '__main__':
-    IOU_THRESH = 0.5                         # IOU
-    ERR_S = 0.3                              # 可视化阈值下的错误图片坐标。为0不写，为0.3即分析该阈值下的
-    IMG_ROOT = r'F:\mayun\map\test_pics'     # 图片路径
-    XML_ROOT = r'F:\mayun\map\test_xml'      # 图片对应xml标注文件路径
-    OTT_IMG_ROOT = r'F:\mayun\map\out_pics'  # 漏报误报错误可视化图片路径
-    CSV_PATH = r'F:\mayun\map\out.csv'       # 算法输出结果： img_name, x_min y_min w h, confidence, CLASS_NAME
-    CLASS_NAME = 'person'
+# if __name__ == '__main__':
+#     IOU_THRESH = 0.5                         # IOU
+#     ERR_S = 0.3                              # 可视化阈值下的错误图片坐标。为0不写，为0.3即分析该阈值下的
+#     IMG_ROOT = r'F:\mayun\map\test_pics'     # 图片路径
+#     XML_ROOT = r'F:\mayun\map\test_xml'      # 图片对应xml标注文件路径
+#     OTT_IMG_ROOT = r'F:\mayun\map\out_pics'  # 漏报误报错误可视化图片路径
+#     CSV_PATH = r'F:\mayun\map\out.csv'       # 算法输出结果： img_name, x_min y_min w h, confidence, CLASS_NAME
+#     CLASS_NAME = 'person'
 
-    run()
-    err_drawing(CLASS_NAME, ERR_S, IMG_ROOT, OTT_IMG_ROOT)
+#     run()
+#     err_drawing(CLASS_NAME, ERR_S, IMG_ROOT, OTT_IMG_ROOT)

@@ -7,31 +7,32 @@ from typing import List, Dict, Tuple
 import matplotlib.pyplot as plt
 import argparse
 import torch
-import csv
 from torch.utils.data import DataLoader
+from torch.utils.tensorboard import summary
+from tqdm import tqdm
+from datetime import datetime
+import argparse
 
-from demo import *
+
+from run import *
 from models import *
 from dataset_loader import UIElementDataset
 import csv
-from dataset.eval.test_py.count.count import *
-from dataset.eval.test_py.read_datas.read import *
-from dataset.eval.test_py.visualization.visualization import drawing
-from dataset.eval.test_py.main import run
-
+# from eval.test_py.count.count import *
+# from eval.test_py.read_datas.read import *
+# from eval.test_py.visualization.visualization import drawing
+# from eval.test_py import main
+from models import GroundingDINO
 def get_args_parser():
     parser = argparse.ArgumentParser(
         "training and testing for UI parser",add_help=False
     )
     # 基础参数
-    parser.add_argument("--batch_size",default=16,type=int)
-    parser.add_argument("--device",default='cpu',type=str)
+    parser.add_argument("--batch_size",default=1,type=int)
 
     # 数据集相关（应该是需要我们自己来划分训练集和测试集）
-    parser.add_argument("--image_dir",default=None,type=str)
-    parser.add_argument("--xml_dir",default=None,type=str)
-    parser.add_argument("--val_image_dir",default=None,type=str)
-    parser.add_argument("--val_xml_dir",default=None,type=str)
+    parser.add_argument("--train_dir",default=None,type=str)
+    parser.add_argument("--val_dir",default=None,type=str)
 
     # 训练相关
     parser.add_argument("--model", default=None, type=str)
@@ -50,61 +51,142 @@ def get_args_parser():
     parser.add_argument("--csv_path", default=None, type=str)
     parser.add_argument("--class_name", default=None, type=str)
 
+    # 日志和检查点相关参数  
+    parser.add_argument("--log_dir", default="./logs", type=str)  
+    parser.add_argument("--ckpt_dir", default="./checkpoints", type=str)  
+    parser.add_argument("--log_interval", default=10, type=int)  
+    parser.add_argument("--save_interval", default=5, type=int)
+    
+    return parser
+
+def create_logger(log_dir):  
+    """创建日志目录和TensorBoard writer"""  
+    os.makedirs(log_dir, exist_ok=True)  
+    current_time = datetime.now().strftime("%Y%m%d_%H%M%S")  
+    log_path = os.path.join(log_dir, current_time)  
+    writer = summary(log_path)  
+    return writer  
+
+def save_checkpoint(model, optimizer, epoch, ckpt_dir):  
+    """保存模型检查点"""  
+    os.makedirs(ckpt_dir, exist_ok=True)  
+    ckpt_path = os.path.join(ckpt_dir, f"checkpoint_epoch_{epoch}.pth")  
+    torch.save({  
+        'epoch': epoch,  
+        'model_state_dict': model.state_dict(),  
+        'optimizer_state_dict': optimizer.state_dict(),  
+    }, ckpt_path)  
+    print(f"Checkpoint saved: {ckpt_path}")  
+
+def load_checkpoint(model, optimizer, ckpt_path):  
+    """加载模型检查点"""  
+    if os.path.exists(ckpt_path):  
+        checkpoint = torch.load(ckpt_path)  
+        model.load_state_dict(checkpoint['model_state_dict'])  
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])  
+        start_epoch = checkpoint['epoch']  
+        print(f"Loaded checkpoint from epoch {start_epoch}")  
+        return start_epoch  
+    return 0 
+
 
 def main(args):
 
-    device = torch.device(args.device)
+    writer = create_logger(args.log_dir)
 
-    dataset_train = UIElementDataset(image_dir=args.image_dir, xml_dir=args.xml_dir)
-    dataset_val = UIElementDataset(image_dir=args.val_image_dir, xml_dir=args.val_xml_dir)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}") 
 
+    dataset_train = UIElementDataset(base_dir=args.train_dir)
+    
     data_loader_train = DataLoader(
         dataset_train,
         batch_size=args.batch_size,
-        shuffle=True,
+        shuffle=False,
         drop_last=True,
     )
 
-    model = models['object_detector'](num_classes=4)
+    # model = ObjectDetector()
+    model = GroundingDINO()
     model.to(device)
-
-    if args.eval:
-        # 加载训练好的模型参数
-        checkpoint = torch.load(args.resume, map_location="cpu")
-        model_state_dict = checkpoint['model_state_dict']
-        msg = model.load_state_dict(model_state_dict, strict=False)
-        print(msg)
-        # 评估模型
-        test_stats = run(args.iou, args.errs, args.img_root, args.xml_root, args.ott_img_root, args.csv_path, args.class_name)
-        print(f"Accuracy of the object detection model on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
-        exit(0)
-
     optimizer = torch.optim.Adam(model.parameters(), args.lr)
 
-    for epoch in range(args.epochs):
+    start_epoch = 0
+    # 可选择恢复训练
+    if args.resume:
+        start_epoch = load_checkpoint(model, optimizer, args.resume)
+
+    if args.eval:
+        # # 加载训练好的模型参数
+        # checkpoint = torch.load(args.resume, map_location="cpu")
+        # model_state_dict = checkpoint['model_state_dict']
+        # msg = model.load_state_dict(model_state_dict, strict=False)
+        # print(msg)
+        # # 评估模型
+        # test_stats = evaluate(args.iou, args.errs, args.img_root, args.xml_root, args.ott_img_root, args.csv_path, args.class_name)
+        # print(f"Accuracy of the object detection model: {test_stats['acc1']:.1f}%")
+        # exit(0)
+        model.eval()
+        with torch.no_grad():
+            for batch_idx, sample in enumerate(data_loader_train):
+                image = sample[0]
+                results = model(image)
+                # add loss
+
+                # add visualization of results
+
+
+
+    # ! No need to train:
+
+    for epoch in range(start_epoch, args.epochs):
         model.train()
         train_loss = 0.0
 
-        for sample in data_loader_train:
-            images, targets = sample[0]
-            images = images.to(device)
-            targets = targets.to(device)
+        # 使用tqdm添加进度条  
+        pbar = tqdm(data_loader_train, desc=f"Epoch {epoch+1}/{args.epochs}")  
+
+        for batch_idx,sample in enumerate(pbar):
+            image,target = sample
+            image = image.to(device) #[batch_size,3,224,224] 图像形状统一处理为3*224*224
+            
+            bboxes = target['boxes'].to(device) #[batch_size, bboxes_num, 4]
+            labels = target['labels'].to(device) #[batch_size, labels_num]
+            assert(labels.shape[1] == bboxes.shape[1])
 
             optimizer.zero_grad()
 
-            outputs = model(images) # 模型输出目标检测模型获得的element_list,每个元素都包含了组件的标定框坐标和属性
-            
-            loss = detection_loss(outputs, targets)
+            pred_bbox, pred_confidence, pred_label = model(image)
+            '''
+            pred_bbox:[batch_size,num_bbox,4]
+            pred_confidence:[batch_size,num_bbox]
+            pred_label:[batch_size,num_bbox]
+            '''
+
+            # 这个得根据助教的eval来改
+            loss = detection_loss(pred_bbox, pred_confidence, pred_label, bboxes, labels)
             loss.backward()
             optimizer.step()
             train_loss += loss.item()
 
-        # 打印训练信息  
-        print(f"Epoch {epoch+1}/{args.epochs}")  
-        print(f"Train Loss: {train_loss/len(data_loader_train)}")   
+            # 日志记录  
+            if batch_idx % args.log_interval == 0:  
+                writer.add_scalar('Training Loss', loss.item(), epoch * len(data_loader_train) + batch_idx)  
+                pbar.set_postfix({'loss': f'{loss.item():.4f}'})  
+
+        # 平均训练损失  
+        avg_loss = train_loss / len(data_loader_train)  
+        writer.add_scalar('Epoch Average Loss', avg_loss, epoch)  
 
         # save checkpoints
-        if args.output_dir and (epoch % 50 == 0 or epoch + 1 == args.epochs):
-            print("Saving model at epoch:", epoch)
-            torch.save(model.state_dict(),args.model_save_path)
+        if (epoch + 1) % args.save_interval == 0:  
+            save_checkpoint(model, optimizer, epoch + 1, args.ckpt_dir) 
+
+    writer.close() 
+
+
+if __name__ == "__main__":
+    args = get_args_parser()
+    args = args.parse_args()
+    main(args)
         
