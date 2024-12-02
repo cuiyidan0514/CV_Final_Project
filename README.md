@@ -2,7 +2,7 @@
 
 环境配置：
 方法1：
-conda env create -f environment.yml
+conda env create -f docker/environment.yml
 方法2：
 ```
 conda create -n modelscope python=3.7 # 适配1.15的tensorflow
