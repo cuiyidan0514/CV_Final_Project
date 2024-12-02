@@ -104,7 +104,7 @@ class GroundingDINO(nn.Module):
             inputs.input_ids,
             box_threshold=0.4,
             text_threshold=0.3,
-            target_sizes=[x.size[::-1]]
+            target_sizes=[x.shape[:2]]
         )[0]
                 
         # 初始化输出张量
@@ -113,6 +113,7 @@ class GroundingDINO(nn.Module):
         confidence = torch.zeros((batch_size, self.num_bboxes), device=self.device)
         max_labels = torch.zeros((batch_size, self.num_bboxes), dtype=torch.long, device=self.device)
         
+        
         # 将结果转换为所需格式
         if len(results['boxes']) > 0:
             num_detected = min(len(results['boxes']), self.num_bboxes)
@@ -120,7 +121,8 @@ class GroundingDINO(nn.Module):
             confidence[0, :num_detected] = results['scores'][:num_detected]
             max_labels[0, :num_detected] = results['labels'][:num_detected]
         
-        return bbox_pred, confidence, max_labels
+        bboxes,labels, scores = process_detections(bbox_pred, max_labels, confidence)
+        return bboxes, labels, scores
 
 
 
