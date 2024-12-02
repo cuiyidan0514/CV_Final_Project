@@ -1,18 +1,17 @@
 # CV_Final_Project
 
-models.py 存放了目标检测模型
-dataset_loader.py 用于将图像和xml文件转换为训练用的格式
-main_train.py 是深度学习的主要框架，包括数据集处理、模型加载、训练、评估、模型保存等函数
-demo.py 是一个可以单独运行的脚本，输入一张图，可以生成经过目标检测后标定的图像以及对应的xml文件，可用于可视化训练好的模型的效果
+环境配置：
+方法1：
+conda env create -f environment.yml
+方法2：
+```
+conda create -n modelscope python=3.7 # 适配1.15的tensorflow
+conda activate modelscope
+pip install tensorflow==1.15
+pip install modelscope[framework]
+pip3 install torch -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip install "modelscope[cv]" -f https://modelscope.oss-cn-beijing.aliyuncs.com/releases/repo.html
+```
 
-train
-
-'''
-python main_train.py --batch_size 1 --train_dir ./dataset --epochs 10 --lr 0.01
-'''
-
-eval
-
-'''
-python main_train.py --batch_size 1 --eval --resume '' --img_root '' --xml_root '' --ott_img_root '' --csv_path ''
-'''
+运行文件：
+`test.py` 是目前的文件，改`screenshot_file`为需要测试的图片路径，运行即可。
