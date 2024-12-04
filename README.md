@@ -15,3 +15,6 @@ pip install "modelscope[cv]" -f https://modelscope.oss-cn-beijing.aliyuncs.com/r
 
 运行文件：
 `test.py` 是目前的文件，改`screenshot_file`为需要测试的图片路径，运行即可。
+
+"scrollable”、"clickable”、"selectable”、"disabled"
+scrollable: 
