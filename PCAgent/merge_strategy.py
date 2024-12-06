@@ -144,10 +144,14 @@ def get_area(bbox):
     return (x_max - x_min) * (y_max - y_min)
 
 
-def merge_all_icon_boxes(bboxes):
+def merge_all_icon_boxes(bboxes,confidences,labels):
     result_bboxes = []
+    result_cons = []
+    result_labels = []
     while bboxes:
         bbox = bboxes.pop(0)
+        confidence = confidences.pop(0)
+        label = labels.pop(0)
         to_add = True
 
         for idx, existing_bbox in enumerate(result_bboxes):
@@ -164,10 +168,10 @@ def merge_all_icon_boxes(bboxes):
 
         if to_add:
             result_bboxes.append(bbox)
+            result_cons.append(confidence)
+            result_labels.append(label)
 
-    return result_bboxes
-
-
+    return result_bboxes, result_cons, result_labels
 
 
 def merge_bbox_groups(A, B, iou_threshold=0.8):
