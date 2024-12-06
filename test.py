@@ -1,16 +1,19 @@
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import numpy as np
+# modelscope用于加载和使用深度学习模型
 from modelscope.pipelines import pipeline
 from modelscope.utils.constant import Tasks
 from modelscope import snapshot_download
 import concurrent.futures
 import os
-
+# PCAgent包含自定义的图像处理和目标检测功能
 from PCAgent.text_localization import ocr
 from PCAgent.icon_localization import det
 from PCAgent.merge_strategy import merge_boxes_and_texts, merge_all_icon_boxes,merge_boxes_and_texts_new
-from run_original import split_image_into_4,draw_coordinates_boxes_on_image
+from run_original import split_image_into_4,split_image_into_16,split_image_into_36,draw_coordinates_boxes_on_image,split_image_into_16_and_shift,split_image_into_25
 import copy
+
+import csv
 
 class DetectionProcessor:
     def __init__(self):
@@ -80,7 +83,9 @@ class DetectionProcessor:
         }
 
     def merge_results(self, results):
-        """合并所有部分的结果"""
+        """
+        合并所有部分的结果：将所有部分的检测结果合并为一个完整的结果
+        """
         all_dino_boxes = []
         all_ocr_boxes = []
         all_ocr_texts = []
@@ -110,7 +115,10 @@ class DetectionProcessor:
         image.save(output_path)
 
     def process_image(self, image_path, output_path):
-        """处理完整图片的主函数"""
+        """
+        处理完整图片的主函数：
+        包括分割、并行处理子图、合并子图结果、可视化最终检测
+        """
         # 分割图片
         parts, coordinates, (width, height) = self.split_image(image_path)
         
@@ -146,75 +154,123 @@ class DetectionProcessor:
         }
 
 
-
+# 用于识别图像中的对象
 groundingdino_dir = snapshot_download('AI-ModelScope/GroundingDINO', revision='v1.0.0')
 groundingdino_model = pipeline('grounding-dino-task', model=groundingdino_dir)
+# 用于检测图像中的文字区域
 ocr_detection = pipeline(Tasks.ocr_detection, model='damo/cv_resnet18_ocr-detection-line-level_damo')
+# 用于识别文本内容
 ocr_recognition = pipeline(Tasks.ocr_recognition, model='damo/cv_convnextTiny_ocr-recognition-document_damo')
 
 # test input image
-screenshot_file = "v1/onedrive/frame_1.png"
-# path for saving the output image
-screenshot_som_file = "./screenshot/screenshot_som.png"
-# draw text box or not
-DRAW_TEXT_BOX = 1
+screenshot_file = "./dataset/train_dataset/jiguang/frame_9_4.png"
+screenshot_som_file = "./screenshot/jiguang/frame_9_4/screenshot_som.png"
+csv_filename = "./output/jiguang.csv"
+
+# 设置绘制参数
+DRAW_TEXT_BOX = 0 # 先不考虑ocr
 USE_SOM = 1
 ICON_CAPTION = 1
 LOCATION_INFO = 'center'
 caption_call_method = "local"
-font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" #! for linux
+#font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" #! for linux
+font_path = r'C:\Windows\Fonts\Arial.ttf' # windows
 
 temp_file = "temp"
 
+caption = "circle buttons"
 
+# 一次处理一张图片
 def get_perception_infos(screenshot_file):
+    # 读取图像并分割，获得子图在原图中的起始坐标
     total_width, total_height = Image.open(screenshot_file).size
-    split_image_into_4(screenshot_file, './screenshot/screenshot')
-    img_list = ['./screenshot/screenshot_part_1.png', './screenshot/screenshot_part_2.png',
-                './screenshot/screenshot_part_3.png', './screenshot/screenshot_part_4.png']
-    img_x_list = [0, total_width/2, 0, total_width/2]
-    img_y_list = [0, 0, total_height/2, total_height/2]
+    
+    # 分割成若干份子图输入
+    #img_list, img_x_list, img_y_list = split_image_into_4(screenshot_file, './screenshot/sub4/screenshot')
+    img_list, img_x_list, img_y_list = split_image_into_16(screenshot_file, './screenshot/sub16/screenshot16')
+    #img_list, img_x_list, img_y_list = split_image_into_36(screenshot_file, './screenshot/sub36/screenshot36')
+    # img_list, img_x_list, img_y_list = split_image_into_16_and_shift(screenshot_file, './screenshot/sub16shift/screenshot16')
+    #img_list, img_x_list, img_y_list = split_image_into_25(screenshot_file, './screenshot/sub25/screenshot25')
+
     coordinates = []
     texts = []
-    padding = total_height * 0.0025  # 10
-    # OCR module using resnet18 and convnextTiny
+    padding = total_height * 0.0025  # 10 生产字符框的合适间距
+    
+    #OCR module using resnet18 and convnextTiny
     for i, img in enumerate(img_list):
         width, height = Image.open(img).size
-
+        # 获得ocr字符框列表和文字列表
         sub_text, sub_coordinates = ocr(img, ocr_detection, ocr_recognition)
+        # 将字符框的坐标都调整成在原图中的坐标
         for coordinate in sub_coordinates:
             coordinate[0] = int(max(0, img_x_list[i] + coordinate[0] - padding))
             coordinate[2] = int(min(total_width, img_x_list[i] + coordinate[2] + padding))
             coordinate[1] = int(max(0, img_y_list[i] + coordinate[1] - padding))
             coordinate[3] = int(min(total_height,img_y_list[i] + coordinate[3] + padding))
-
+        # 将每个子图调整后的字符框坐标和文本合并
         sub_text_merge, sub_coordinates_merge = merge_boxes_and_texts_new(sub_text, sub_coordinates)
         coordinates.extend(sub_coordinates_merge)
         texts.extend(sub_text_merge)
+    # 将所有子图的字符框和文本合并
     merged_text, merged_text_coordinates = merge_boxes_and_texts(texts, coordinates)
 
     coordinates = []
+    confidences = []
+    labels = []
     # detection module using groundingdino
     for i, img in enumerate(img_list):
-        width, height = Image.open(img).size
-        sub_coordinates = det(img, "icon", groundingdino_model)
+        image = Image.open(img)
+        width, height = image.size
+        # blur_img = image.filter(ImageFilter.GaussianBlur(radius=5))
+        scale = 1
+        enlarged_image = image.resize((int(width * scale), int(height * scale)))
+        enlarged_image.save("./screenshot/temp.png")
+        sub_coordinates, sub_confidences, sub_labels = det("./screenshot/temp.png", caption, groundingdino_model, scale=scale)
+        # 对于每个子图，获取其检测到的边界框坐标
+        # sub_coordinates, sub_confidences, sub_labels = det(img, caption, groundingdino_model)
+        # 将子图坐标调整到原图中的坐标
         for coordinate in sub_coordinates:
             coordinate[0] = int(max(0, img_x_list[i] + coordinate[0] - padding))
             coordinate[2] = int(min(total_width, img_x_list[i] + coordinate[2] + padding))
             coordinate[1] = int(max(0, img_y_list[i] + coordinate[1] - padding))
             coordinate[3] = int(min(total_height, img_y_list[i] + coordinate[3] + padding))
-
-        sub_coordinates = merge_all_icon_boxes(sub_coordinates)
+        # 合并调整后的坐标
+        sub_coordinates,sub_confidences,sub_labels = merge_all_icon_boxes(sub_coordinates,sub_confidences,sub_labels)
         coordinates.extend(sub_coordinates)
-    merged_icon_coordinates = merge_all_icon_boxes(coordinates)
+        confidences.extend(sub_confidences)
+        labels.extend(sub_labels)
+    # 合并所有子图的边界框坐标
+    merged_icon_coordinates,merged_icon_confidences,merged_icon_labels = merge_all_icon_boxes(coordinates,confidences,labels)
 
+    directory = os.path.dirname(screenshot_som_file)
+    os.makedirs(directory, exist_ok=True)
+
+    logit_list = merged_icon_confidences
+    label_list = merged_icon_labels
     if DRAW_TEXT_BOX == 1:
         rec_list = merged_text_coordinates + merged_icon_coordinates
-        draw_coordinates_boxes_on_image(screenshot_file, copy.deepcopy(rec_list), screenshot_som_file, font_path)
+        draw_coordinates_boxes_on_image(screenshot_file, copy.deepcopy(rec_list), copy.deepcopy(logit_list), copy.deepcopy(label_list), screenshot_som_file, font_path)
     else:
-        draw_coordinates_boxes_on_image(screenshot_file, copy.deepcopy(merged_icon_coordinates), screenshot_som_file, font_path)
-    
+        rec_list = merged_icon_coordinates
+        draw_coordinates_boxes_on_image(screenshot_file, copy.deepcopy(rec_list), copy.deepcopy(logit_list), copy.deepcopy(label_list), screenshot_som_file, font_path)
+       
+    return merged_icon_coordinates, merged_icon_confidences, merged_icon_labels
 
-    return total_width, total_height
+def gen_csv(merged_icon_coordinates, merged_icon_confidences, merged_icon_labels):
+    num_bbox = len(merged_icon_coordinates)
+    filename = os.path.splitext(os.path.basename(screenshot_file))[0]
+    filename_ext = f"{filename}.png"
+    with open(csv_filename, mode='a', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        for i in range(num_bbox):
+            row = [
+                filename_ext, 
+                ' '.join(map(str, merged_icon_coordinates[i])),
+                merged_icon_confidences[i],
+                merged_icon_labels[i]
+                ]
+            writer.writerow(row)
+    print("successfully written to csv")
 
-get_perception_infos(screenshot_file)
+merged_icon_coordinates, merged_icon_confidences, merged_icon_labels = get_perception_infos(screenshot_file)
+gen_csv(merged_icon_coordinates, merged_icon_confidences, merged_icon_labels)
