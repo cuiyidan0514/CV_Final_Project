@@ -1,16 +1,23 @@
 # -*- coding=utf-8 -*-
 import csv
-from test_py.count.count import *
-from test_py.read_datas.read import *
-from test_py.visualization.visualization import drawing
+from eval.test_py.count.count import *
+from eval.test_py.read_datas.read import *
+from eval.test_py.visualization.visualization import drawing
+import chardet
+
+def get_csv_coding(csv_path):
+    with open(csv_path,'rb') as f:
+        result = chardet.detect(f.read())
+    print(result)
 
 
 def TP_P_num_sum(csv_results, threshod, IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_IMG_ROOT,CSV_PATH,CLASS_NAME):
     TP_num_sum = 0
     P_num_sum = 0
     threshod = float('%.4f' % threshod)
-    if ERR_S == threshod and ERR_S != 0:
-        err = open('error_analysis_{}_{}.csv'.format(CLASS_NAME, ERR_S), "w", newline='')
+    distance = abs(ERR_S - threshod)
+    if distance < 1e-2 and ERR_S != 0:
+        err = open('error_analysis_{}_{}.csv'.format(CLASS_NAME, ERR_S), "w", newline='',encoding='utf-8')
         visualization_FP_wrt = csv.writer(err)
         visualization_FP_wrt.writerow(["图片名", "坐标", "分数", "err_type"])
     for csv_result in csv_results:
@@ -24,14 +31,16 @@ def TP_P_num_sum(csv_results, threshod, IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_I
         img_coords = list()
         img_confidence = list()
         for item in img_coord_confidence_s:
+            #print(item[4],threshod)
             if item[4] > threshod:  # 测试得到的相似度
                 img_coords.append(item[:-1])
                 img_confidence.append(item[-1])
         # print(img_coords)
         P_num_sum += len(img_coords)
+        #print('P_num_sum:', P_num_sum)
         xml_path_ = os.path.join(XML_ROOT, img_name[:-4] + '.xml')
         xml_coords = parse_xml(xml_path_, CLASS_NAME)
-        # print(len(xml_coords))
+        #print(len(xml_coords))
         # 创建一个行为len(img_coords), 列为len(xml_coords)的数组
         if len(img_coords) == 0 or len(xml_coords) == 0:
             if len(xml_coords) == 0 and len(img_coords) > 0 and ERR_S == threshod and ERR_S != 0:
@@ -53,9 +62,11 @@ def TP_P_num_sum(csv_results, threshod, IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_I
                 iou_array[img_coords_index, xml_coords_index] = compute_iou(
                     img_coords[img_coords_index],
                     xml_coords[xml_coords_index])
+                #print(img_coords_index, xml_coords_index,iou_array[img_coords_index, xml_coords_index])
                 if iou_array[img_coords_index, xml_coords_index] < IOU_THRESH:
                     iou_array[img_coords_index, xml_coords_index] = 0
                     confidence_array[img_coords_index, xml_coords_index] = 0
+        #print(iou_array)
         loop_num = 0
 
         visualization_FP = img_coords[:]
@@ -96,17 +107,17 @@ def TP_P_num_sum(csv_results, threshod, IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_I
     return TP_num_sum, P_num_sum
 
 
-def run(IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_IMG_ROOT,CSV_PATH,CLASS_NAME):
+def run():
     # 计算所有图像group truth的bbox个数，由于存在某些存在group truth的图片，没有预测到任何bbox，所以召回率的分母
     # 需要从所有测试图片的xml文件中累加得到
     group_truth_num_sum = 0
-    for parent, _, files in os.walk(IMG_ROOT):
+    for parent, _, files in os.walk(IMG_ROOT): 
         for file in files:
             xml_path = os.path.join(XML_ROOT, file[:-4] + '.xml')
-            coords = parse_xml(xml_path, CLASS_NAME)
+            coords = parse_xml(xml_path, CLASS_NAME) #解析gt_csv
             group_truth_num_sum += len(coords)
 
-    print("group_truth_num_sum:%d" % group_truth_num_sum)
+    print("group_truth_num_sum:%d" % group_truth_num_sum) #对于指定的caption('clickable/selectable/scrollable/disabled')，总共有多少gt bbox
 
     #
     precisions = list()
@@ -114,17 +125,25 @@ def run(IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_IMG_ROOT,CSV_PATH,CLASS_NAME):
     ap = 0
 
     # 根据阈值，计算FP的累加数量 以及 预测框的累加个数
-    csv_results = parse_csv(CSV_PATH, CLASS_NAME)
+    csv_results = parse_csv(CSV_PATH, CLASS_NAME) #解析predict_csv
+    #print(csv_results)
     with open(CLASS_NAME + str(IOU_THRESH) + ".csv", 'w', newline='') as t_file:  # newline=''
         csv_write = csv.writer(t_file)
         csv_write.writerow(("threshod", "precision", "recall", "TP_num_sum", "P_num_sum"))
+<<<<<<< HEAD:eval/test_py/main.py
         for threshod in np.linspace(0.1, 1.0, 181):  # 设置阈值个数
             print("threshod: %f " % threshod)
             TP_num_sum, P_num_sum = TP_P_num_sum(csv_results, threshod, IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_IMG_ROOT,CSV_PATH,CLASS_NAME)
             print(TP_num_sum, P_num_sum)
+=======
+        for threshod in np.linspace(0.1, 1, 180):  # 设置阈值个数
+            #print("threshod: %f " % threshod)
+            TP_num_sum, P_num_sum = TP_P_num_sum(csv_results, threshod)
+            #print(TP_num_sum, P_num_sum)
+>>>>>>> b13f51829f02ab34550a5d783715d95cccf18d3f:eval_main.py
             precision = float(TP_num_sum) / (P_num_sum + 1e-05)
             recall = float(TP_num_sum) / (group_truth_num_sum + 1e-05)
-            print("precision: %f, recall: %f" % (precision, recall))
+            #print("precision: %f, recall: %f" % (precision, recall))
             row = (threshod, precision, recall, TP_num_sum, P_num_sum)
             precisions.append(precision)
             recalls.append(recall)
@@ -139,10 +158,9 @@ def run(IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_IMG_ROOT,CSV_PATH,CLASS_NAME):
         csv_write.writerow(('ap:{}'.format(ap), '', ''))
         csv_write.writerow(('group_truth_num_sum:{}'.format(group_truth_num_sum), '', ''))
     drawing(recalls, precisions, CLASS_NAME, IOU_THRESH, ap)
-    err_drawing(CLASS_NAME, ERR_S, IMG_ROOT, OTT_IMG_ROOT)
 
 
-
+<<<<<<< HEAD:eval/test_py/main.py
 # if __name__ == '__main__':
 #     IOU_THRESH = 0.5                         # IOU
 #     ERR_S = 0.3                              # 可视化阈值下的错误图片坐标。为0不写，为0.3即分析该阈值下的
@@ -154,3 +172,17 @@ def run(IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_IMG_ROOT,CSV_PATH,CLASS_NAME):
 
 #     run()
 #     err_drawing(CLASS_NAME, ERR_S, IMG_ROOT, OTT_IMG_ROOT)
+=======
+if __name__ == '__main__':
+    IOU_THRESH = 0.3                         # IOU
+    ERR_S = 0.3                            # 可视化阈值下的错误图片坐标。为0不写，为0.3即分析该阈值下的
+    IMG_ROOT = r'E:\cv_final\cv_project_cyd\dataset\test_dataset\jiguang\pngs'   # 图片路径
+    XML_ROOT = r'E:\cv_final\cv_project_cyd\dataset\test_dataset\jiguang\xmls'   # ground truth:图片对应xml标注文件路径 
+    OTT_IMG_ROOT = r'E:\cv_final\cv_project_cyd\eval_output'  # 漏报误报错误可视化图片路径
+    CSV_PATH = r'E:\cv_final\cv_project_cyd\output\4_prompts_9999.csv'       # our prediction算法输出结果： img_name, x_min y_min w h, confidence, CLASS_NAME   
+    CLASS_NAME = 'selectable'
+
+    #get_csv_coding(CSV_PATH)
+    run()
+    #err_drawing(CLASS_NAME, ERR_S, IMG_ROOT, OTT_IMG_ROOT) #可以看到哪些框标错了
+>>>>>>> b13f51829f02ab34550a5d783715d95cccf18d3f:eval_main.py
