@@ -44,7 +44,7 @@ def cmyk_to_rgb(c, m, y, k):
     b = 255 * (1.0 - y / 255) * (1.0 - k / 255)
     return int(r), int(g), int(b)
 
-def draw_coordinates_boxes_on_image(image_path, coordinates, output_image_path, font_path):
+def draw_coordinates_boxes_on_image(image_path, coordinates, output_image_path, font_path, label= None):
     image = Image.open(image_path)
     width, height = image.size
     draw = ImageDraw.Draw(image)
@@ -72,6 +72,7 @@ def draw_coordinates_boxes_on_image(image_path, coordinates, output_image_path, 
         
         draw.text((text_x, text_y), str(i + 1), fill=color, font=font)
     # image.show()
+
     image = image.convert('RGB')
     image.save(output_image_path)
 

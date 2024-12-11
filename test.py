@@ -153,9 +153,11 @@ ocr_detection = pipeline(Tasks.ocr_detection, model='damo/cv_resnet18_ocr-detect
 ocr_recognition = pipeline(Tasks.ocr_recognition, model='damo/cv_convnextTiny_ocr-recognition-document_damo')
 
 # test input image
-screenshot_file = "v1/onedrive/frame_1.png"
+screenshot_file = "v1/coredraw/frame_27_20.png"
 # path for saving the output image
-screenshot_som_file = "./screenshot/screenshot_som.png"
+screenshot_som_file = "./screenshot/"+ screenshot_file.replace('.png', '_som.png')
+if not os.path.exists(os.path.dirname(screenshot_som_file)):
+    os.makedirs(os.path.dirname(screenshot_som_file), exist_ok=True)
 # draw text box or not
 DRAW_TEXT_BOX = 1
 USE_SOM = 1
@@ -167,7 +169,7 @@ font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" #! for linux
 temp_file = "temp"
 
 
-def get_perception_infos(screenshot_file):
+def get_perception_infos(screenshot_file,enable_ocr=True, label = 'scrollable'):
     total_width, total_height = Image.open(screenshot_file).size
     split_image_into_4(screenshot_file, './screenshot/screenshot')
     img_list = ['./screenshot/screenshot_part_1.png', './screenshot/screenshot_part_2.png',
@@ -177,27 +179,28 @@ def get_perception_infos(screenshot_file):
     coordinates = []
     texts = []
     padding = total_height * 0.0025  # 10
-    # OCR module using resnet18 and convnextTiny
-    for i, img in enumerate(img_list):
-        width, height = Image.open(img).size
+    if enable_ocr:
+        # OCR module using resnet18 and convnextTiny
+        for i, img in enumerate(img_list):
+            width, height = Image.open(img).size
 
-        sub_text, sub_coordinates = ocr(img, ocr_detection, ocr_recognition)
-        for coordinate in sub_coordinates:
-            coordinate[0] = int(max(0, img_x_list[i] + coordinate[0] - padding))
-            coordinate[2] = int(min(total_width, img_x_list[i] + coordinate[2] + padding))
-            coordinate[1] = int(max(0, img_y_list[i] + coordinate[1] - padding))
-            coordinate[3] = int(min(total_height,img_y_list[i] + coordinate[3] + padding))
+            sub_text, sub_coordinates = ocr(img, ocr_detection, ocr_recognition)
+            for coordinate in sub_coordinates:
+                coordinate[0] = int(max(0, img_x_list[i] + coordinate[0] - padding))
+                coordinate[2] = int(min(total_width, img_x_list[i] + coordinate[2] + padding))
+                coordinate[1] = int(max(0, img_y_list[i] + coordinate[1] - padding))
+                coordinate[3] = int(min(total_height,img_y_list[i] + coordinate[3] + padding))
 
-        sub_text_merge, sub_coordinates_merge = merge_boxes_and_texts_new(sub_text, sub_coordinates)
-        coordinates.extend(sub_coordinates_merge)
-        texts.extend(sub_text_merge)
-    merged_text, merged_text_coordinates = merge_boxes_and_texts(texts, coordinates)
+            sub_text_merge, sub_coordinates_merge = merge_boxes_and_texts_new(sub_text, sub_coordinates)
+            coordinates.extend(sub_coordinates_merge)
+            texts.extend(sub_text_merge)
+        merged_text, merged_text_coordinates = merge_boxes_and_texts(texts, coordinates)
 
     coordinates = []
     # detection module using groundingdino
     for i, img in enumerate(img_list):
         width, height = Image.open(img).size
-        sub_coordinates = det(img, "icon", groundingdino_model)
+        sub_coordinates = det(img, label, groundingdino_model)
         for coordinate in sub_coordinates:
             coordinate[0] = int(max(0, img_x_list[i] + coordinate[0] - padding))
             coordinate[2] = int(min(total_width, img_x_list[i] + coordinate[2] + padding))
@@ -209,12 +212,15 @@ def get_perception_infos(screenshot_file):
     merged_icon_coordinates = merge_all_icon_boxes(coordinates)
 
     if DRAW_TEXT_BOX == 1:
-        rec_list = merged_text_coordinates + merged_icon_coordinates
-        draw_coordinates_boxes_on_image(screenshot_file, copy.deepcopy(rec_list), screenshot_som_file, font_path)
+        if enable_ocr:
+            rec_list = merged_text_coordinates + merged_icon_coordinates
+        else:
+            rec_list = merged_icon_coordinates
+        draw_coordinates_boxes_on_image(screenshot_file, copy.deepcopy(rec_list), screenshot_som_file, font_path, label)
     else:
         draw_coordinates_boxes_on_image(screenshot_file, copy.deepcopy(merged_icon_coordinates), screenshot_som_file, font_path)
     
 
     return total_width, total_height
 
-get_perception_infos(screenshot_file)
+get_perception_infos(screenshot_file,enable_ocr=False, label = 'scrolable page')
