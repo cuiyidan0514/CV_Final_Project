@@ -37,21 +37,25 @@ def ocr(image_path, ocr_detection, ocr_recognition):
     coordinate = []
     
     image_full = cv2.imread(image_path)
+    # 尝试进行文本区域检测，如果检测失败，则返回‘no text’列表和空坐标框
     try:
         det_result = ocr_detection(image_full)
     except:
         print('not text detected')
         return ['no text'], [[0,0,0,0]]
-    det_result = det_result['polygons'] 
-    for i in range(det_result.shape[0]):
-        pts = order_point(det_result[i])
-        image_crop = crop_image(image_full, pts)
+    # print(det_result) # 只是返回多边形框的坐标
+    det_result = det_result['polygons'] # 检测到的文本区域是若干个多边形框
+    for i in range(det_result.shape[0]): # 对每个多边形框进行遍历
+        pts = order_point(det_result[i]) # 将每个框的points按顺时针排列
+        image_crop = crop_image(image_full, pts) # 根据points裁剪出包含文本的区域
         
+        # 尝试对裁剪出的文本框进行文本识别
         try:
             result = ocr_recognition(image_crop)['text'][0]
         except:
             continue
 
+        # 将bbox的坐标转换为整数，转换为(x1,y1,x2,y2)格式，存入text_data,coordinate列表
         box = [int(e) for e in list(pts.reshape(-1))]
         box = [box[0], box[1], box[4], box[5]]
         

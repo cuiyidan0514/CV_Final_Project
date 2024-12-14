@@ -84,7 +84,7 @@ def draw_boxes_in_format(image_path, coordinates, logits, labels, output_image_p
     label_colors = {}
     font = ImageFont.truetype(font_path, int(height * 0.012))
     set_select = {'circle buttons','checkbox'}
-    set_click = {'rectangular','arrow'}
+    set_click = {'rectangular','arrow','icons'}
 
     for i, (coord,label,logit) in enumerate(zip(coordinates,labels,logits)):
         if label in set_click:

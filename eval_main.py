@@ -107,7 +107,7 @@ def TP_P_num_sum(csv_results, threshod, IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_I
     return TP_num_sum, P_num_sum
 
 
-def run():
+def run(eval_output):
     # 计算所有图像group truth的bbox个数，由于存在某些存在group truth的图片，没有预测到任何bbox，所以召回率的分母
     # 需要从所有测试图片的xml文件中累加得到
     group_truth_num_sum = 0
@@ -126,21 +126,15 @@ def run():
 
     # 根据阈值，计算FP的累加数量 以及 预测框的累加个数
     csv_results = parse_csv(CSV_PATH, CLASS_NAME) #解析predict_csv
-    #print(csv_results)
-    with open(CLASS_NAME + str(IOU_THRESH) + ".csv", 'w', newline='') as t_file:  # newline=''
+    filename = os.path.splitext(os.path.basename(CSV_PATH))[0]
+    name = f"{eval_output}{filename}_{CLASS_NAME}_{IOU_THRESH}.csv"
+    with open(name, 'w', newline='') as t_file:  # newline=''
         csv_write = csv.writer(t_file)
         csv_write.writerow(("threshod", "precision", "recall", "TP_num_sum", "P_num_sum"))
-<<<<<<< HEAD:eval/test_py/main.py
-        for threshod in np.linspace(0.1, 1.0, 181):  # 设置阈值个数
-            print("threshod: %f " % threshod)
-            TP_num_sum, P_num_sum = TP_P_num_sum(csv_results, threshod, IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_IMG_ROOT,CSV_PATH,CLASS_NAME)
-            print(TP_num_sum, P_num_sum)
-=======
         for threshod in np.linspace(0.1, 1, 180):  # 设置阈值个数
             #print("threshod: %f " % threshod)
             TP_num_sum, P_num_sum = TP_P_num_sum(csv_results, threshod)
             #print(TP_num_sum, P_num_sum)
->>>>>>> b13f51829f02ab34550a5d783715d95cccf18d3f:eval_main.py
             precision = float(TP_num_sum) / (P_num_sum + 1e-05)
             recall = float(TP_num_sum) / (group_truth_num_sum + 1e-05)
             #print("precision: %f, recall: %f" % (precision, recall))
@@ -157,32 +151,19 @@ def run():
         ap = '%.3f' % ap
         csv_write.writerow(('ap:{}'.format(ap), '', ''))
         csv_write.writerow(('group_truth_num_sum:{}'.format(group_truth_num_sum), '', ''))
-    drawing(recalls, precisions, CLASS_NAME, IOU_THRESH, ap)
+    drawing(recalls, precisions, CLASS_NAME, IOU_THRESH, ap, eval_output,CSV_PATH)
 
 
-<<<<<<< HEAD:eval/test_py/main.py
-# if __name__ == '__main__':
-#     IOU_THRESH = 0.5                         # IOU
-#     ERR_S = 0.3                              # 可视化阈值下的错误图片坐标。为0不写，为0.3即分析该阈值下的
-#     IMG_ROOT = r'F:\mayun\map\test_pics'     # 图片路径
-#     XML_ROOT = r'F:\mayun\map\test_xml'      # 图片对应xml标注文件路径
-#     OTT_IMG_ROOT = r'F:\mayun\map\out_pics'  # 漏报误报错误可视化图片路径
-#     CSV_PATH = r'F:\mayun\map\out.csv'       # 算法输出结果： img_name, x_min y_min w h, confidence, CLASS_NAME
-#     CLASS_NAME = 'person'
-
-#     run()
-#     err_drawing(CLASS_NAME, ERR_S, IMG_ROOT, OTT_IMG_ROOT)
-=======
 if __name__ == '__main__':
     IOU_THRESH = 0.3                         # IOU
     ERR_S = 0.3                            # 可视化阈值下的错误图片坐标。为0不写，为0.3即分析该阈值下的
     IMG_ROOT = r'E:\cv_final\cv_project_cyd\dataset\test_dataset\jiguang\pngs'   # 图片路径
     XML_ROOT = r'E:\cv_final\cv_project_cyd\dataset\test_dataset\jiguang\xmls'   # ground truth:图片对应xml标注文件路径 
     OTT_IMG_ROOT = r'E:\cv_final\cv_project_cyd\eval_output'  # 漏报误报错误可视化图片路径
-    CSV_PATH = r'E:\cv_final\cv_project_cyd\output\4_prompts_9999.csv'       # our prediction算法输出结果： img_name, x_min y_min w h, confidence, CLASS_NAME   
-    CLASS_NAME = 'selectable'
+    CSV_PATH = r'E:\cv_final\cv_project_cyd\output\jiguang\frame_3_1.csv'       # our prediction算法输出结果： img_name, x_min y_min w h, confidence, CLASS_NAME   
+    eval_output = "./eval_output/jiguang/"
+    CLASS_NAME = 'clickable'
 
     #get_csv_coding(CSV_PATH)
-    run()
+    run(eval_output)
     #err_drawing(CLASS_NAME, ERR_S, IMG_ROOT, OTT_IMG_ROOT) #可以看到哪些框标错了
->>>>>>> b13f51829f02ab34550a5d783715d95cccf18d3f:eval_main.py

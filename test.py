@@ -9,8 +9,9 @@ import os
 # PCAgent包含自定义的图像处理和目标检测功能
 from PCAgent.text_localization import ocr
 from PCAgent.icon_localization import det
-from PCAgent.merge_strategy import merge_boxes_and_texts, merge_all_icon_boxes,merge_boxes_and_texts_new, merge_buttons_and_texts, merge_all_boxes_on_logits, merge_min_boxes
+from PCAgent.merge_strategy import merge_boxes_and_texts, merge_all_icon_boxes,merge_boxes_and_texts_new, merge_buttons_and_texts, merge_all_boxes_on_logits, merge_min_boxes, merge_texts_and_icons
 from run_original import split_image_into_4,split_image_into_16,split_image_into_36,draw_coordinates_boxes_on_image,split_image_into_16_and_shift,split_image_into_25,text_draw_coordinates_boxes_on_image,split_image_into_9,draw_boxes_in_format
+from detect_root_area import detect_root_area
 import copy
 
 import csv
@@ -174,15 +175,19 @@ caption_call_method = "local"
 font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" #! for linux
 temp_file = "temp"
 
-# 从原图中将root区域裁剪出来
-def extract_root_from_image(screenshot_file, xml_file, output_file):
-    output_file_name = f"{output_file}root.png"
+
+# 从原图中将root区域裁剪出来:基于gt
+def extract_root_from_image(screenshot_file, xml_file, output_file, clear_ocr=False):
+    if clear_ocr:
+        output_file_name = f"{output_file}root_clear_ocr.png"
+    else:
+        output_file_name = f"{output_file}root.png"
     tree = ET.parse(xml_file)
     root = tree.getroot()
 
     for obj in root.findall('object'):
         name = obj.find('name').text
-        if name == "root":
+        if name == "root" or name == "Root":
             bndbox = obj.find('bndbox')
             xmin = int(bndbox.find('xmin').text)
             ymin = int(bndbox.find('ymin').text)
@@ -195,6 +200,7 @@ def extract_root_from_image(screenshot_file, xml_file, output_file):
                 print(f'Saved cropped image to {output_file_name}')
             
             return xmin,ymin
+
         
 def clear_ocr_from_img(merged_text_coordinates, screenshot_file, output_file):  
     image = cv2.imread(screenshot_file)  
@@ -208,10 +214,10 @@ def clear_ocr_from_img(merged_text_coordinates, screenshot_file, output_file):
     for (x1, y1, x2, y2) in merged_text_coordinates:  
         # 计算 bbox 周围的区域  
         # 定义 ROI 的边界（包括扩展1个像素）  
-        roi_x1 = max(x1 - 1, 0)  
-        roi_y1 = max(y1 - 1, 0)  
-        roi_x2 = min(x2 + 1, image.shape[1])  
-        roi_y2 = min(y2 + 1, image.shape[0])  
+        roi_x1 = max(x1 - 2, 0)  
+        roi_y1 = max(y1 - 2, 0)  
+        roi_x2 = min(x2 + 2, image.shape[1])  
+        roi_y2 = min(y2 + 2, image.shape[0])  
         
         # 提取整个周围区域  
         complete_roi = output_image[roi_y1:roi_y2, roi_x1:roi_x2]  
@@ -243,7 +249,7 @@ def get_ocr_from_different_levels(xmin,ymin,screenshot_file,output,output_file):
 
     total_width, total_height = Image.open(screenshot_file).size
     # 将root分割成若干份子图输入
-    sub_nums = [1,4,9,16,25]
+    sub_nums = [1,4,9,16]
     for j in range(len(sub_nums)):
         sub_num_ocr = sub_nums[j]
         if sub_num_ocr == 4:
@@ -287,16 +293,21 @@ def get_ocr_from_different_levels(xmin,ymin,screenshot_file,output,output_file):
             pre_coords = merged_text_coordinates
         else:
             pre_coords = merge_min_boxes(merged_text_coordinates,pre_coords)
+
+        if sub_num_ocr == 4:
+            coords_4 = merged_text_coordinates
+
     ocr_name = f"{output}{sub_nums}.png"
     text_draw_coordinates_boxes_on_image(screenshot_file, pre_coords, ocr_name)
-    return pre_coords
+    return pre_coords, coords_4
 
 
 # 一次处理一张图片
-def get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_file,load_ocr=False,sub_num=4,text_th=0.1,bbox_th=0.5,caption=None,with_text=True,clear_ocr=True):
+def get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_file,load_ocr=False,sub_num=4,text_th=0.1,bbox_th=0.5,caption=None,icon_only=False,text_only=False,clear_ocr=True):
     
     # 从原图中裁剪出root部分
-    xmin,ymin = extract_root_from_image(screenshot_file,xml_file,output_file) # 生成root.png
+    xmin,ymin = extract_root_from_image(screenshot_file,xml_file,output_file) # 根据xml生成root.png
+    #xmin, ymin, xmax, ymax = detect_root_area(screenshot_root,root_root,pic) # 自行检测root并生成root.png
     
     # 读取图像并分割，获得子图在原图中的起始坐标
     total_width, total_height = Image.open(screenshot_file).size
@@ -304,19 +315,29 @@ def get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_
     padding = total_height * 0.0025  # 10 生产字符框的合适间距
 
     filename = os.path.splitext(os.path.basename(screenshot_file))[0]
-    name = f"{filename}.pkl"
     root_file = f"{output_file}root.png"
     if load_ocr:
-        with open(name,'rb') as f:
-            merged_text_coordinates = pickle.load(f)
+        with open(text_coords_save_file,'rb') as f:
+            data = pickle.load(f)
+            merged_text_coordinates = data['ocr']
+            merged_text_coordinates_4 = data['ocr_4']
+            
     else:
-        merged_text_coordinates = get_ocr_from_different_levels(xmin,ymin,screenshot_file,output_file,root_file)
-        with open(name,'wb') as f:
-            pickle.dump(merged_text_coordinates,f)
+        merged_text_coordinates, merged_text_coordinates_4 = get_ocr_from_different_levels(xmin,ymin,screenshot_file,output_file,root_file)
+        with open(text_coords_save_file,'wb') as f:
+            ocr_to_save = {'ocr':merged_text_coordinates,'ocr_4':merged_text_coordinates_4}
+            pickle.dump(ocr_to_save,f)
     
     if clear_ocr:
         output_file_name2 = clear_ocr_from_img(merged_text_coordinates, screenshot_file, output_file)
-        xmin,ymin = extract_root_from_image(output_file_name2,xml_file,output_file)
+        # 根据xml裁剪root区域，并保存至root.png
+        xmin,ymin = extract_root_from_image(output_file_name2,xml_file,output_file,True)
+        root_file = f"{output_file}root_clear_ocr.png"
+        # 根据detect_root_area返回的结果裁剪root区域
+        # with Image.open(output_file_name2) as img:
+        #     cropped_img = img.crop((xmin,ymin,xmax,ymax))
+        #     root_file = f"{output_file}root_clear_ocr.png"
+        #     cropped_img.save(root_file)
 
     if sub_num == 4:
         img_list, img_x_list, img_y_list = split_image_into_4(root_file, './screenshot/sub4/screenshot', xmin, ymin)
@@ -354,7 +375,7 @@ def get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_
     #draw_coordinates_boxes_on_image(screenshot_file, copy.deepcopy(merged_icon_coordinates), copy.deepcopy(merged_icon_confidences), copy.deepcopy(merged_icon_labels), my_screenshot_som_file, font_path, text_th=text_th, bbox_th=bbox_th)
 
     # 将button和text合并
-    coords,logits,labels = merge_buttons_and_texts(merged_text_coordinates,merged_icon_coordinates,merged_icon_confidences,merged_icon_labels,with_text)
+    coords,logits,labels = merge_buttons_and_texts(merged_text_coordinates_4,merged_icon_coordinates,merged_icon_confidences,merged_icon_labels,icon_only,text_only)
     coords,logits,labels = merge_all_icon_boxes(coords,logits,labels)
     draw_coordinates_boxes_on_image(screenshot_file, copy.deepcopy(coords), copy.deepcopy(logits), copy.deepcopy(labels), my_screenshot_som_file, font_path, text_th=text_th, bbox_th=bbox_th, with_text=True)
     return coords, logits, labels
@@ -364,7 +385,7 @@ def gen_csv(merged_icon_coordinates, merged_icon_confidences, merged_icon_labels
     filename = os.path.splitext(os.path.basename(screenshot_file))[0]
     filename_ext = f"{filename}.png"
 
-    set_clickable = {'rectangular','arrow','link text'}
+    set_clickable = {'rectangular','arrow','link text','icons'}
     set_selectable = {'circle buttons','checkbox'}
     set_scrollable = {'scrollbar'}
     with open(csv_filename, mode='a', newline='', encoding='utf-8') as csvfile:
@@ -388,56 +409,91 @@ def gen_csv(merged_icon_coordinates, merged_icon_confidences, merged_icon_labels
             writer.writerow(row)
     print("successfully written to csv")
 
+def process_directory(input_dir, output_dir, csv_output_dir):
+    """处理指定目录下的所有图片文件
+    
+    Args:
+        input_dir: 输入目录，包含图片和对应的xml文件
+        output_dir: 输出目录，用于保存处理结果
+        csv_output_dir: CSV文件输出目录
+    """
+    # 确保输出目录存在
+    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(csv_output_dir, exist_ok=True)
+    
+    # 获取所有png文件
+    image_files = [f for f in os.listdir(input_dir) if f.endswith('.png')]
+    
+    for image_file in image_files:
+        # 构建完整的文件路径
+        base_name = os.path.splitext(image_file)[0]
+        screenshot_file = os.path.join(input_dir, image_file)
+        xml_file = os.path.join(input_dir, f"{base_name}.xml")
+        
+        # 检查对应的xml文件是否存在
+        if not os.path.exists(xml_file):
+            print(f"警告: {xml_file} 不存在，跳过处理 {image_file}")
+            continue
+            
+        # 创建输出子目录
+        image_output_dir = os.path.join(output_dir, base_name)
+        screenshot_som_dir = os.path.join(output_dir, "screenshot", base_name)
+        os.makedirs(image_output_dir, exist_ok=True)
+        os.makedirs(screenshot_som_dir, exist_ok=True)
+        
+        # 设置输出文件路径
+        my_screenshot_som_file = os.path.join(screenshot_som_dir, f"{sub_num}_{caption}")
+        if clear_ocr:
+            my_screenshot_som_file += "_clear_ocr"
+        else:
+            my_screenshot_som_file += "_with_ocr"
+        if icon_only:
+            my_screenshot_som_file += "_icon"
+        if text_only:
+            my_screenshot_som_file += "_text"
+            
+        # 处理单个图片
+        try:
+            icon_coordinates, icon_confidences, icon_labels = get_perception_infos(
+                screenshot_file,
+                xml_file,
+                image_output_dir + "/",  # get_perception_infos需要路径末尾有/
+                my_screenshot_som_file,
+                load_ocr=load_ocr,
+                sub_num=sub_num,
+                bbox_th=bbox_th,
+                caption=caption,
+                icon_only=icon_only,
+                text_only=text_only,
+                clear_ocr=clear_ocr
+            )
+            
+            # 生成CSV文件
+            csv_filename = os.path.join(csv_output_dir, f"{base_name}.csv")
+            gen_csv(icon_coordinates, icon_confidences, icon_labels, csv_filename)
+            
+            print(f"成功处理: {image_file}")
+            
+        except Exception as e:
+            print(f"处理 {image_file} 时出错: {str(e)}")
 
-screenshot_file = "v1/jiguang/frame_4_1.png"
-xml_file = "v1/jiguang/frame_4_1.xml"
-output_file = "v1/jiguang/frame_4_1/"
-screenshot_som_file = "./screenshot/v1/jiguang/frame_4_1/"
-csv_filename = "./output/v1/jiguang/"
-
-
-# 单提示词
-mode = 'baseline'
-if mode == 'baseline':
-    caption = "icons"
-    sub_num = 4
-    bbox_th = 0.1
-    relax = False
-    clear_ocr = False
-    load_ocr = False
-if clear_ocr:
-    my_screenshot_som_file = f"{screenshot_som_file}{sub_num}_{caption}_clear_ocr"
-else:
-    my_screenshot_som_file = f"{screenshot_som_file}{sub_num}_{caption}_with_ocr"
-icon_coordinates, icon_confidences, icon_labels = get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_file,load_ocr=load_ocr,sub_num=sub_num,bbox_th=bbox_th,caption=caption,with_text=relax,clear_ocr=clear_ocr)
-filename = f"{screenshot_som_file}{caption}_{sub_num}.png"
-#draw_boxes_in_format(screenshot_file, copy.deepcopy(icon_coordinates), copy.deepcopy(icon_confidences), copy.deepcopy(icon_labels), filename, font_path, bbox_th=bbox_th, with_text=True)
-
-
-# 多提示词
-# caption_list = ["circle buttons","checkbox","arrow","rectangular","link text"]
-# sub_num = [4,9,4,4,4]
-# bbox_ths = [0.4,0.13,0.1,0.09,0.1]
-# relax = [False, False, True, False, False]
-# clear_ocr = [True, True, True, True, False]
-# load_ocr = True
-# for i,(caption,nn,bbox_th,flag,flag1) in enumerate(zip(caption_list,sub_num,bbox_ths,relax,clear_ocr)):
-#     my_screenshot_som_file = f"{screenshot_som_file}_{nn}_{caption}.png"
-#     # 得到的coords彼此之间都互不重叠
-#     coords, logits, labels = get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_file,load_ocr=load_ocr,sub_num=nn,bbox_th=bbox_th,caption=caption,with_text=flag,clear_ocr=flag1)
-#     # 将新的caption得到的bbox与已有的bbox合并
-#     if  i == 0:
-#         pre_coords = coords
-#         pre_logits = logits
-#         pre_labels = labels
-#     else:
-#         pre_coords, pre_logits, pre_labels = merge_all_boxes_on_logits(coords, logits, labels, pre_coords, pre_logits, pre_labels)
-
-# icon_coordinates, icon_confidences, icon_labels = merge_all_icon_boxes(pre_coords, pre_logits, pre_labels)
-# filename = f"{screenshot_som_file}{sub_num}.png"
-# draw_coordinates_boxes_on_image(screenshot_file, copy.deepcopy(icon_coordinates), copy.deepcopy(icon_confidences), copy.deepcopy(icon_labels), filename, font_path, bbox_th=bbox_ths, with_text=True)
-# draw_boxes_in_format(screenshot_file, copy.deepcopy(icon_coordinates), copy.deepcopy(icon_confidences), copy.deepcopy(icon_labels), filename, font_path, bbox_th=bbox_ths, with_text=True)
-
-# filename = os.path.splitext(os.path.basename(screenshot_file))[0]
-# csv_filename = f"{csv_filename}{filename}_{sub_num}"
-# gen_csv(icon_coordinates, icon_confidences, icon_labels, csv_filename)
+if __name__ == "__main__":
+    # 配置参数
+    mode = 'baseline'
+    if mode == 'baseline':
+        caption = "icons"
+        sub_num = 4
+        bbox_th = 0.1
+        relax = False
+        clear_ocr = False
+        load_ocr = False
+        icon_only = True
+        text_only = False
+    
+    # 设置输入输出路径
+    input_directory = "v1/jiguang"  # 包含图片和xml的目录
+    output_directory = "output/v1/jiguang"  # 处理结果输出目录
+    csv_output_directory = "output/v1/jiguang/csv"  # CSV文件输出目录
+    
+    # 处理整个目录
+    process_directory(input_directory, output_directory, csv_output_directory)

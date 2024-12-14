@@ -113,6 +113,126 @@ def merge_boxes_and_texts(texts, boxes, iou_threshold=0):
 
     return merged_texts, merged_boxes
 
+def calculate_distance(box, other_box):
+    box_xmin, box_ymin, box_xmax, box_ymax = box  
+    other_xmin, other_ymin, other_xmax, other_ymax = other_box
+
+    if box_xmax < other_xmin:  # box 在 other_box 的左方  
+        horizontal_distance = other_xmin - box_xmax  
+    elif other_xmax < box_xmin:  # box 在 other_box 的右方  
+        horizontal_distance = box_xmin - other_xmax  
+    else:  
+        # 他们在横向上重叠  
+        horizontal_distance = 0  
+    
+    if box_ymax < other_ymin:  # box 在 other_box 的上方  
+        vertical_distance = other_ymin - box_ymax  
+    elif other_ymax < box_ymin:  # box 在 other_box 的下方  
+        vertical_distance = box_ymin - other_ymax  
+    else:  
+        # 他们在纵向上重叠  
+        vertical_distance = 0 
+    
+    return max(horizontal_distance, vertical_distance) 
+
+def merge_buttons_and_texts(text_boxes, icon_boxes, icon_logits, icon_labels, icon_only=False, text_only=False):
+    if len(icon_boxes) == 0:
+        return []
+
+    merged_boxes = []
+    merged_logits = []
+    merged_labels = []
+    merged_text = set()
+
+    for i in range(len(icon_boxes)):
+        box = icon_boxes[i]
+        to_merge_boxes = [box]
+        min_distance = 5
+        min_index = -1
+        # 检测是否有相近的文本框
+        for j, text_box in enumerate(text_boxes):
+            distance = calculate_distance(text_box, box)
+            if distance < min_distance:
+                min_distance = distance
+                min_index = j
+        merged_text.add(j)
+        # 如果有，则将icon和text的bbox合并
+        if min_index != -1 and min_distance < 5:
+            to_merge_boxes.append(text_boxes[min_index])
+            x1 = min(b[0] for b in to_merge_boxes)
+            y1 = min(b[1] for b in to_merge_boxes)
+            x2 = max(b[2] for b in to_merge_boxes)
+            y2 = max(b[3] for b in to_merge_boxes)
+            merged_box = [x1, y1, x2, y2]
+            merged_boxes.append(merged_box)
+            merged_logits.append(icon_logits[i])
+            merged_labels.append(icon_labels[i])
+        # 如果没有，就只添加icon bbox
+        elif icon_only:
+            merged_boxes.append(icon_boxes[i])
+            merged_logits.append(icon_logits[i])
+            merged_labels.append(icon_labels[i])
+        
+    if text_only:
+        for j, text_box in enumerate(text_boxes):
+            if j in merged_text:
+                continue
+            merged_boxes.append(text_boxes[j])
+            merged_logits.append(1)
+            merged_labels.append("text")
+            
+    return merged_boxes, merged_logits, merged_labels
+
+
+def merge_texts_and_icons(text_boxes, icon_boxes, icon_logits, icon_labels, icon_only=False, text_only=False):
+    if len(icon_boxes) == 0:
+        return []
+
+    merged_boxes = []
+    merged_logits = []
+    merged_labels = []
+    merged_icons = set()
+
+    for i in range(len(text_boxes)):
+        box = text_boxes[i]
+        to_merge_boxes = [box]
+        min_distance = 5
+        min_index = -1
+        # 检测是否有相近的文本框
+        for j, icon_box in enumerate(icon_boxes):
+            distance = calculate_distance(icon_box, box)
+            if distance < min_distance:
+                min_distance = distance
+                min_index = j
+        merged_icons.add(j)
+        # 如果有，则将icon和text的bbox合并
+        if min_index != -1 and min_distance < 5:
+            to_merge_boxes.append(icon_boxes[min_index])
+            x1 = min(b[0] for b in to_merge_boxes)
+            y1 = min(b[1] for b in to_merge_boxes)
+            x2 = max(b[2] for b in to_merge_boxes)
+            y2 = max(b[3] for b in to_merge_boxes)
+            merged_box = [x1, y1, x2, y2]
+            merged_boxes.append(merged_box)
+            merged_logits.append(icon_logits[min_index])
+            merged_labels.append(icon_labels[min_index])
+        # 如果没有，就只添加icon bbox
+        elif text_only:
+            merged_boxes.append(text_boxes[i])
+            merged_logits.append(1)
+            merged_labels.append("text")
+        
+    if icon_only:
+        for j, icon_box in enumerate(icon_boxes):
+            if j in merged_icons:
+                continue
+            merged_boxes.append(icon_boxes[j])
+            merged_logits.append(icon_logits[j])
+            merged_labels.append(icon_labels[j])
+            
+    return merged_boxes, merged_logits, merged_labels
+
+
 
 def is_contained(bbox1, bbox2):
     x1_min, y1_min, x1_max, y1_max = bbox1
@@ -143,11 +263,88 @@ def get_area(bbox):
     x_min, y_min, x_max, y_max = bbox
     return (x_max - x_min) * (y_max - y_min)
 
+def merge_all_boxes_on_logits(cur_coords, cur_logits, cur_labels, pre_coords, pre_logits, pre_labels):
+    result_bboxes, result_cons, result_labels = [],[],[]
+    merged_cur_indices = set()
+    
+    for i,(pre_coord,pre_logit,pre_label) in enumerate(zip(pre_coords, pre_logits, pre_labels)):
+        #print("ori_bbox:",pre_coord,pre_logit,pre_label)
+        for j,(coord,logit,label) in enumerate(zip(cur_coords, cur_logits, cur_labels)):
+            if j in merged_cur_indices:
+                continue
 
-def merge_all_icon_boxes(bboxes):
+            iou = calculate_iou(pre_coord,coord)
+            if iou > 0.8:
+                #print("bbox to merge:",coord,logit,label)
+                merged_cur_indices.add(j)
+
+                if logit > pre_logit:
+                    max_logit = logit
+                    max_label = label
+                else:
+                    max_logit = pre_logit
+                    max_label = pre_label                
+                
+                x1_min, y1_min, x1_max, y1_max = coord
+                x2_min, y2_min, x2_max, y2_max = pre_coord
+                x1 = min(x1_min,x2_min)
+                y1 = min(y1_min,y2_min)
+                x2 = max(x1_max,x2_max)
+                y2 = max(y1_max,y2_max)
+                new_coord = [x1,y1,x2,y2]
+                result_bboxes.append(new_coord)
+                result_cons.append(max_logit)
+                result_labels.append(max_label)
+                #print("new bbox:",new_coord,max_logit,max_label)
+                break
+        
+        # 如果遍历完pre_coords, pre_logits, pre_labels都没有重叠的，就加入result数组
+        result_bboxes.append(pre_coord)
+        result_cons.append(pre_logit)
+        result_labels.append(pre_label)
+    
+    # 全部遍历完后，如果pre_coords, pre_logits, pre_labels还有剩下的，即没有和原来重叠的，则加入result
+    for j,(coord,logit,label) in enumerate(zip(cur_coords, cur_logits, cur_labels)):
+        if j not in merged_cur_indices:
+            result_bboxes.append(coord)
+            result_cons.append(logit)
+            result_labels.append(label)       
+
+    return result_bboxes, result_cons, result_labels
+
+def merge_min_boxes(cur_coords, pre_coords):
+    # 如果有重叠就取较小框，没有重叠就舍弃
     result_bboxes = []
+    merged_cur_indices = set()
+    
+    for i,pre_coord in enumerate(pre_coords):
+        for j,coord in enumerate(cur_coords):
+            # if j in merged_cur_indices:
+            #     continue
+            iou = calculate_iou(pre_coord,coord)
+            if iou > 0.3:
+                # merged_cur_indices.add(j)
+
+                x1_min, y1_min, x1_max, y1_max = coord
+                x2_min, y2_min, x2_max, y2_max = pre_coord
+                x1 = max(x1_min,x2_min)
+                y1 = max(y1_min,y2_min)
+                x2 = min(x1_max,x2_max)
+                y2 = min(y1_max,y2_max)
+                new_coord = [x1,y1,x2,y2]
+                result_bboxes.append(new_coord)
+                # break
+    return result_bboxes
+
+
+def merge_all_icon_boxes(bboxes,confidences,labels):
+    result_bboxes = []
+    result_cons = []
+    result_labels = []
     while bboxes:
         bbox = bboxes.pop(0)
+        confidence = confidences.pop(0)
+        label = labels.pop(0)
         to_add = True
 
         for idx, existing_bbox in enumerate(result_bboxes):
@@ -156,7 +353,8 @@ def merge_all_icon_boxes(bboxes):
                     result_bboxes[idx] = existing_bbox
                 to_add = False
                 break
-            elif is_overlapping(bbox, existing_bbox):
+            elif is_overlapping(bbox, existing_bbox) and calculate_iou(bbox, existing_bbox) > 1e-2:
+                #print(calculate_iou(bbox, existing_bbox))
                 if get_area(bbox) < get_area(existing_bbox):
                     result_bboxes[idx] = bbox
                 to_add = False
@@ -164,10 +362,10 @@ def merge_all_icon_boxes(bboxes):
 
         if to_add:
             result_bboxes.append(bbox)
+            result_cons.append(confidence)
+            result_labels.append(label)
 
-    return result_bboxes
-
-
+    return result_bboxes, result_cons, result_labels
 
 
 def merge_bbox_groups(A, B, iou_threshold=0.8):
