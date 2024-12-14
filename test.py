@@ -389,19 +389,22 @@ def gen_csv(merged_icon_coordinates, merged_icon_confidences, merged_icon_labels
     print("successfully written to csv")
 
 
-screenshot_file = "./dataset/train_dataset/jiguang/frame_4_1.png"
-xml_file = "./dataset/train_dataset/jiguang/frame_4_1.xml"
-output_file = "./dataset/train_root_dataset/jiguang/frame_4_1/"
-screenshot_som_file = "./screenshot/jiguang/frame_4_1/"
-csv_filename = "./output/jiguang/"
+screenshot_file = "v1/jiguang/frame_4_1.png"
+xml_file = "v1/jiguang/frame_4_1.xml"
+output_file = "v1/jiguang/frame_4_1/"
+screenshot_som_file = "./screenshot/v1/jiguang/frame_4_1/"
+csv_filename = "./output/v1/jiguang/"
+
 
 # 单提示词
-caption = "icons"
-sub_num = 9
-bbox_th = 0.1
-relax = False
-clear_ocr = False
-load_ocr = True
+mode = 'baseline'
+if mode == 'baseline':
+    caption = "icons"
+    sub_num = 4
+    bbox_th = 0.1
+    relax = False
+    clear_ocr = False
+    load_ocr = False
 if clear_ocr:
     my_screenshot_som_file = f"{screenshot_som_file}{sub_num}_{caption}_clear_ocr"
 else:

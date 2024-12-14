@@ -1,3 +1,5 @@
 /v1/
 /UI.zip
 /dataset/
+*.pyc
+__pycache__/
