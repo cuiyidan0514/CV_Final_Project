@@ -18,6 +18,7 @@ import csv
 import xml.etree.ElementTree as ET
 import cv2
 import pickle
+from collections import Counter
 
 class DetectionProcessor:
     def __init__(self):
@@ -200,9 +201,8 @@ def extract_root_from_image(screenshot_file, xml_file, output_file, clear_ocr=Fa
                 print(f'Saved cropped image to {output_file_name}')
             
             return xmin,ymin
-
         
-def clear_ocr_from_img(merged_text_coordinates, screenshot_file, output_file):  
+def clear_det_from_img(merged_text_coordinates, screenshot_file, output_file, merged_logits=None, th=0):  
     image = cv2.imread(screenshot_file)  
     
     if image is None:  
@@ -211,7 +211,9 @@ def clear_ocr_from_img(merged_text_coordinates, screenshot_file, output_file):
     
     output_image = image.copy()  
     
-    for (x1, y1, x2, y2) in merged_text_coordinates:  
+    for (x1, y1, x2, y2),logit in zip(merged_text_coordinates, merged_logits):  
+        if logit < th:
+            continue
         # 计算 bbox 周围的区域  
         # 定义 ROI 的边界（包括扩展1个像素）  
         roi_x1 = max(x1 - 2, 0)  
@@ -238,6 +240,50 @@ def clear_ocr_from_img(merged_text_coordinates, screenshot_file, output_file):
         
         # 用平均颜色填充 bbox 区域  
         cv2.rectangle(output_image, (x1, y1), (x2, y2), tuple(map(int, avg_color)), -1)  
+
+    # 保存结果图像  
+    output_name = f"{output_file}.png"
+    cv2.imwrite(output_name, output_image)  
+    print(f"Output saved to: {output_name}")
+    return output_name
+
+        
+def clear_ocr_from_img(merged_text_coordinates, screenshot_file, output_file):  
+    image = cv2.imread(screenshot_file)  
+    
+    if image is None:  
+        print("Error: Could not read the image.")  
+        return  
+    
+    output_image = image.copy()  
+    
+    for (x1, y1, x2, y2) in merged_text_coordinates:  
+        # 计算 bbox 周围的区域  
+        # 定义 ROI 的边界（包括扩展1个像素）  
+        roi_x1 = max(x1 - 1, 0)  
+        roi_y1 = max(y1 - 1, 0)  
+        roi_x2 = min(x2 + 1, image.shape[1])  
+        roi_y2 = min(y2 + 1, image.shape[0])  
+        
+        # 提取整个周围区域  
+        complete_roi = output_image[roi_y1:roi_y2, roi_x1:roi_x2]  
+        
+        # 创建黑色掩码，仅保留 bbox 内的部分  
+        mask = np.zeros((roi_y2 - roi_y1, roi_x2 - roi_x1), dtype=np.uint8)  # Create a mask with zeros  
+        cv2.rectangle(mask, (x1 - roi_x1, y1 - roi_y1), (x2 - roi_x1, y2 - roi_y1), 255, -1)  # Fill rectangle  
+
+        # 从完整的 ROI 中排除 bbox 内的部分  
+        masked_roi = cv2.bitwise_and(complete_roi, complete_roi, mask=cv2.bitwise_not(mask))  
+        
+        # 检查 masked_roi，不为空长度  
+        if masked_roi.size > 0:  
+            # 计算平均颜色，仅考虑周围颜色  
+            avg_color = cv2.mean(masked_roi, mask=cv2.bitwise_not(mask))[0:3]  
+        else:  
+            avg_color = (0, 0, 0)  # 如果没有有效区域则设置为黑色  
+        
+        # 用平均颜色填充 bbox 区域  
+        cv2.rectangle(output_image, (x1, y1), (x2, y2), tuple(map(int, avg_color)), -1) 
 
     # 保存结果图像  
     output_name = f"{output_file}clear_ocr.png"
@@ -304,7 +350,7 @@ def get_ocr_from_different_levels(xmin,ymin,screenshot_file,output,output_file):
 
 # 一次处理一张图片
 def get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_file,load_ocr=False,sub_num=4,text_th=0.1,bbox_th=0.5,caption=None,icon_only=False,text_only=False,clear_ocr=True):
-    
+    os.makedirs(output_file, exist_ok=True)
     # 从原图中裁剪出root部分
     xmin,ymin = extract_root_from_image(screenshot_file,xml_file,output_file) # 根据xml生成root.png
     #xmin, ymin, xmax, ymax = detect_root_area(screenshot_root,root_root,pic) # 自行检测root并生成root.png
@@ -327,6 +373,28 @@ def get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_
         with open(text_coords_save_file,'wb') as f:
             ocr_to_save = {'ocr':merged_text_coordinates,'ocr_4':merged_text_coordinates_4}
             pickle.dump(ocr_to_save,f)
+
+    # detection module using ocr
+    img_list, img_x_list, img_y_list = split_image_into_4(root_file, './screenshot/sub4/screenshot', xmin, ymin)
+    text_coordinates = []
+    texts = []
+    padding = total_height * 0.0025  # 10 生产字符框的合适间距   
+    for i, img in enumerate(img_list):
+        # 获得ocr字符框列表和文字列表
+        sub_text, sub_coordinates = ocr(img, ocr_detection, ocr_recognition)
+        # 将字符框的坐标都调整成在原图中的坐标
+        for coordinate in sub_coordinates:
+            coordinate[0] = int(max(0, img_x_list[i] + coordinate[0] - padding))
+            coordinate[2] = int(min(total_width, img_x_list[i] + coordinate[2] + padding))
+            coordinate[1] = int(max(0, img_y_list[i] + coordinate[1] - padding))
+            coordinate[3] = int(min(total_height,img_y_list[i] + coordinate[3] + padding))
+        # 将每个子图调整后的字符框坐标和文本合并
+        sub_text_merge, sub_coordinates_merge = merge_boxes_and_texts_new(sub_text, sub_coordinates)
+        text_coordinates.extend(sub_coordinates_merge)
+        texts.extend(sub_text_merge)
+    # 将所有子图的字符框和文本合并
+    _, merged_text_coordinates_4 = merge_boxes_and_texts(texts, text_coordinates)
+    text_draw_coordinates_boxes_on_image(screenshot_file, merged_text_coordinates_4, screenshot_som_file)
     
     if clear_ocr:
         output_file_name2 = clear_ocr_from_img(merged_text_coordinates, screenshot_file, output_file)
@@ -350,7 +418,7 @@ def get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_
     elif sub_num == 36:
         img_list, img_x_list, img_y_list = split_image_into_36(root_file, './screenshot/sub36/screenshot36', xmin, ymin)
     else:
-        img_list, img_x_list, img_y_list = split_image_into_16_and_shift(root_file, './screenshot/sub16shift/screenshot16', xmin, ymin)
+        img_list, img_x_list, img_y_list = [root_file], [xmin], [ymin]
 
     coordinates = []
     confidences = []
@@ -378,19 +446,23 @@ def get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_
     coords,logits,labels = merge_buttons_and_texts(merged_text_coordinates_4,merged_icon_coordinates,merged_icon_confidences,merged_icon_labels,icon_only,text_only)
     coords,logits,labels = merge_all_icon_boxes(coords,logits,labels)
     draw_coordinates_boxes_on_image(screenshot_file, copy.deepcopy(coords), copy.deepcopy(logits), copy.deepcopy(labels), my_screenshot_som_file, font_path, text_th=text_th, bbox_th=bbox_th, with_text=True)
+    
     return coords, logits, labels
 
-def gen_csv(merged_icon_coordinates, merged_icon_confidences, merged_icon_labels, csv_filename):
+def gen_csv(merged_icon_coordinates, merged_icon_confidences, merged_icon_labels, csv_filename, th):
     num_bbox = len(merged_icon_coordinates)
-    filename = os.path.splitext(os.path.basename(screenshot_file))[0]
-    filename_ext = f"{filename}.png"
+    filename_ext = f"{pic}.png"
 
-    set_clickable = {'rectangular','arrow','link text','icons'}
+    set_clickable = {'square','rectangular','input box','button','arrow','link text','icons','penguin','cross','blue icons','blue','toolbar icons','gray area',"clickable area",'red button','blue button','rectangular'}
     set_selectable = {'circle buttons','checkbox'}
-    set_scrollable = {'scrollbar'}
+    set_scrollable = {'scrollbar','triangle','combo box'}
+    
     with open(csv_filename, mode='a', newline='', encoding='utf-8') as csvfile:
         writer = csv.writer(csvfile)
         for i in range(num_bbox):
+            logit = merged_icon_confidences[i].item()
+            if logit < th:
+                continue
             label = merged_icon_labels[i]
             if label in set_clickable:
                 mylabel = 'clickable'

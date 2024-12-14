@@ -342,33 +342,6 @@ def generate_api(images, query):
     return icon_map
 
 
-# def split_image_into_4(input_image_path, output_image_prefix, xmin, ymin):
-#     img = Image.open(input_image_path)
-#     width, height = img.size
-
-#     sub_width = width // 2
-#     sub_height = height // 2
-
-#     # crop into 4 sub images
-#     quadrants = [
-#         (0, 0, sub_width, sub_height),
-#         (sub_width, 0, width, sub_height),
-#         (0, sub_height, sub_width, height),
-#         (sub_width, sub_height, width, height)
-#     ]
-
-#     for i, box in enumerate(quadrants):
-#         sub_img = img.crop(box)
-#         sub_img.save(f"{output_image_prefix}_part_{i+1}.png")
-    
-#     img_list = ['./screenshot/sub4/screenshot_part_1.png', './screenshot/sub4/screenshot_part_2.png',
-#                 './screenshot/sub4/screenshot_part_3.png', './screenshot/sub4/screenshot_part_4.png']
-#     img_x_list = [0, width/2, 0, width/2]
-#     img_y_list = [0, 0, height/2, height/2]
-#     img_x_list = [x + xmin for x in img_x_list]
-#     img_y_list = [y + ymin for y in img_y_list]
-#     return img_list, img_x_list, img_y_list
-
 def split_image_into_4(input_image_path, output_image_prefix, xmin, ymin):
     img = Image.open(input_image_path)
     width, height = img.size
@@ -381,12 +354,7 @@ def split_image_into_4(input_image_path, output_image_prefix, xmin, ymin):
         (0, 0, sub_width, sub_height),
         (sub_width, 0, width, sub_height),
         (0, sub_height, sub_width, height),
-        (sub_width, sub_height, width, height),
-        (sub_width/2, 0, 3*sub_width/2, sub_height),
-        (0, sub_height/2, sub_width, 3*sub_height/2),
-        (sub_width/2, sub_height/2, 3*sub_width/2, 3*sub_height/2),
-        (sub_width, sub_height/2, width, 3*sub_height/2),
-        (sub_width/2, sub_height, 3*sub_width/2, height)
+        (sub_width, sub_height, width, height)
     ]
 
     for i, box in enumerate(quadrants):
@@ -394,15 +362,47 @@ def split_image_into_4(input_image_path, output_image_prefix, xmin, ymin):
         sub_img.save(f"{output_image_prefix}_part_{i+1}.png")
     
     img_list = ['./screenshot/sub4/screenshot_part_1.png', './screenshot/sub4/screenshot_part_2.png',
-                './screenshot/sub4/screenshot_part_3.png', './screenshot/sub4/screenshot_part_4.png',
-                './screenshot/sub4/screenshot_part_5.png', './screenshot/sub4/screenshot_part_6.png',
-                './screenshot/sub4/screenshot_part_7.png', './screenshot/sub4/screenshot_part_8.png',
-                './screenshot/sub4/screenshot_part_9.png']
-    img_x_list = [0, width/2, 0, width/2, sub_width/2, 0, sub_width/2, sub_width, sub_width/2]
-    img_y_list = [0, 0, height/2, height/2, 0, sub_height/2, sub_height/2, sub_height/2, sub_height]
+                './screenshot/sub4/screenshot_part_3.png', './screenshot/sub4/screenshot_part_4.png']
+    img_x_list = [0, width/2, 0, width/2]
+    img_y_list = [0, 0, height/2, height/2]
     img_x_list = [x + xmin for x in img_x_list]
     img_y_list = [y + ymin for y in img_y_list]
     return img_list, img_x_list, img_y_list
+
+# def split_image_into_4(input_image_path, output_image_prefix, xmin, ymin):
+#     img = Image.open(input_image_path)
+#     width, height = img.size
+
+#     sub_width = width // 2
+#     sub_height = height // 2
+
+#     # crop into 4 sub images
+#     quadrants = [
+#         (0, 0, sub_width, sub_height),
+#         (sub_width, 0, width, sub_height),
+#         (0, sub_height, sub_width, height),
+#         (sub_width, sub_height, width, height),
+#         (sub_width/2, 0, 3*sub_width/2, sub_height),
+#         (0, sub_height/2, sub_width, 3*sub_height/2),
+#         (sub_width/2, sub_height/2, 3*sub_width/2, 3*sub_height/2),
+#         (sub_width, sub_height/2, width, 3*sub_height/2),
+#         (sub_width/2, sub_height, 3*sub_width/2, height)
+#     ]
+
+#     for i, box in enumerate(quadrants):
+#         sub_img = img.crop(box)
+#         sub_img.save(f"{output_image_prefix}_part_{i+1}.png")
+    
+#     img_list = ['./screenshot/sub4/screenshot_part_1.png', './screenshot/sub4/screenshot_part_2.png',
+#                 './screenshot/sub4/screenshot_part_3.png', './screenshot/sub4/screenshot_part_4.png',
+#                 './screenshot/sub4/screenshot_part_5.png', './screenshot/sub4/screenshot_part_6.png',
+#                 './screenshot/sub4/screenshot_part_7.png', './screenshot/sub4/screenshot_part_8.png',
+#                 './screenshot/sub4/screenshot_part_9.png']
+#     img_x_list = [0, width/2, 0, width/2, sub_width/2, 0, sub_width/2, sub_width, sub_width/2]
+#     img_y_list = [0, 0, height/2, height/2, 0, sub_height/2, sub_height/2, sub_height/2, sub_height]
+#     img_x_list = [x + xmin for x in img_x_list]
+#     img_y_list = [y + ymin for y in img_y_list]
+#     return img_list, img_x_list, img_y_list
 
 def split_image_into_9(input_image_path, output_image_prefix, xmin, ymin):
     img = Image.open(input_image_path)
