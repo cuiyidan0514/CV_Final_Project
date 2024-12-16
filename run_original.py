@@ -121,6 +121,9 @@ def text_draw_coordinates_boxes_on_image(image_path, coordinates, output_image_p
     new_color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
     for i, coord in enumerate(coordinates):
+        y0 = min(coord[1],coord[3])
+        y1 = max(coord[1],coord[3])
+        coord = [coord[0],y0,coord[2],y1]
         draw.rectangle(coord, outline=new_color, width=int(height * 0.0025))
 
     image = image.convert('RGB')

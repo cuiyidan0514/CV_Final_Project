@@ -157,12 +157,12 @@ def run(eval_output):
 if __name__ == '__main__':
     IOU_THRESH = 0.3                         # IOU
     ERR_S = 0.3                            # 可视化阈值下的错误图片坐标。为0不写，为0.3即分析该阈值下的
-    IMG_ROOT = r'E:\cv_final\cv_project_cyd\dataset\test_dataset\jiguang\pngs'   # 图片路径
-    XML_ROOT = r'E:\cv_final\cv_project_cyd\dataset\test_dataset\jiguang\xmls'   # ground truth:图片对应xml标注文件路径 
-    OTT_IMG_ROOT = r'E:\cv_final\cv_project_cyd\eval_output'  # 漏报误报错误可视化图片路径
-    CSV_PATH = r'E:\cv_final\cv_project_cyd\output\jiguang\frame_3_1.csv'       # our prediction算法输出结果： img_name, x_min y_min w h, confidence, CLASS_NAME   
+    IMG_ROOT = r'E:\cv_final\cyd\dataset\test_dataset\jiguang\pngs'   # 图片路径
+    XML_ROOT = r'E:\cv_final\cyd\dataset\test_dataset\jiguang\xmls'   # ground truth:图片对应xml标注文件路径 
+    OTT_IMG_ROOT = r'E:\cv_final\cyd\eval_output'  # 漏报误报错误可视化图片路径
+    CSV_PATH = r'E:\cv_final\cyd\output\jiguang\jiguang.csv'       # our prediction算法输出结果： img_name, x_min y_min w h, confidence, CLASS_NAME   
     eval_output = "./eval_output/jiguang/"
-    CLASS_NAME = 'clickable'
+    CLASS_NAME = 'disabled'
 
     #get_csv_coding(CSV_PATH)
     run(eval_output)

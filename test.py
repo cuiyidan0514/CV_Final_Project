@@ -9,7 +9,7 @@ import os
 # PCAgent包含自定义的图像处理和目标检测功能
 from PCAgent.text_localization import ocr
 from PCAgent.icon_localization import det
-from PCAgent.merge_strategy import merge_boxes_and_texts, merge_all_icon_boxes,merge_boxes_and_texts_new, merge_buttons_and_texts, merge_all_boxes_on_logits, merge_min_boxes, merge_texts_and_icons
+from PCAgent.merge_strategy import merge_boxes_and_texts, merge_all_icon_boxes,merge_boxes_and_texts_new, merge_buttons_and_texts, merge_all_boxes_on_logits, merge_min_boxes, merge_texts_and_icons, calculate_iou
 from run_original import split_image_into_4,split_image_into_16,split_image_into_36,draw_coordinates_boxes_on_image,split_image_into_16_and_shift,split_image_into_25,text_draw_coordinates_boxes_on_image,split_image_into_9,draw_boxes_in_format
 from detect_root_area import detect_root_area
 import copy
@@ -193,13 +193,31 @@ def extract_root_from_image(screenshot_file, xml_file, output_file, clear_ocr=Fa
             xmax = int(bndbox.find('xmax').text)
             ymax = int(bndbox.find('ymax').text)
 
-            with Image.open(screenshot_file) as img:
-                cropped_img = img.crop((xmin,ymin,xmax,ymax))
-                cropped_img.save(output_file_name)
-                print(f'Saved cropped image to {output_file_name}')
-            
-            return xmin,ymin
-        
+            ratio = (xmax-xmin)/(ymax-ymin)
+            if ratio < 0.2 or ratio > 5:
+                with Image.open(screenshot_file) as img:
+                    img.save(output_file_name)
+                return 0,0
+            else:
+                with Image.open(screenshot_file) as img:
+                    cropped_img = img.crop((xmin,ymin,xmax,ymax))
+                    cropped_img.save(output_file_name)
+                    print(f'Saved cropped image to {output_file_name}')
+                return xmin,ymin
+
+def get_root_coords(xml_file):
+    tree = ET.parse(xml_file)
+    root = tree.getroot()
+    for obj in root.findall('object'):
+        name = obj.find('name').text
+        if name == "root" or name == "Root":
+            bndbox = obj.find('bndbox')
+            xmin = int(bndbox.find('xmin').text)
+            ymin = int(bndbox.find('ymin').text)
+            xmax = int(bndbox.find('xmax').text)
+            ymax = int(bndbox.find('ymax').text)
+            return xmin,ymin,xmax,ymax
+
 def clear_det_from_img(merged_text_coordinates, screenshot_file, output_file, merged_logits=None, th=0):  
     image = cv2.imread(screenshot_file)  
     
@@ -293,7 +311,7 @@ def get_ocr_from_different_levels(xmin,ymin,screenshot_file,output,output_file):
 
     total_width, total_height = Image.open(screenshot_file).size
     # 将root分割成若干份子图输入
-    sub_nums = [1,4,9,16]
+    sub_nums = [1,4,9]
     for j in range(len(sub_nums)):
         sub_num_ocr = sub_nums[j]
         if sub_num_ocr == 4:
@@ -443,16 +461,31 @@ def get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_
     # 将button和text合并
     coords,logits,labels = merge_buttons_and_texts(merged_text_coordinates_4,merged_icon_coordinates,merged_icon_confidences,merged_icon_labels,icon_only,text_only)
     coords,logits,labels = merge_all_icon_boxes(coords,logits,labels)
-    draw_coordinates_boxes_on_image(screenshot_file, copy.deepcopy(coords), copy.deepcopy(logits), copy.deepcopy(labels), my_screenshot_som_file, font_path, text_th=text_th, bbox_th=bbox_th, with_text=True)
+    filt_coords = []
+    filt_logits = []
+    filt_labels = []
+    xx1,yy1,xx2,yy2 = get_root_coords(xml_file) # root区域的坐标
+    for i,(x1,y1,x2,y2) in enumerate(coords):
+        iou = calculate_iou([x1,y1,x2,y2],[xx1,yy1,xx2,yy2])
+        if iou > 0:
+            ix1 = max(x1, xx1) 
+            iy1 = max(y1, yy1)  
+            ix2 = min(x2, xx2)
+            iy2 = min(y2, yy2)  
+            filt_coords.append([ix1, iy1, ix2, iy2]) # Add the intersection coordinates  
+            filt_logits.append(logits[i])  
+            filt_labels.append(labels[i]) 
     
-    return coords, logits, labels
+    draw_coordinates_boxes_on_image(screenshot_file, copy.deepcopy(filt_coords), copy.deepcopy(filt_logits), copy.deepcopy(filt_labels), my_screenshot_som_file, font_path, text_th=text_th, bbox_th=bbox_th, with_text=True)
+    
+    return filt_coords, filt_logits, filt_labels
 
 def gen_csv(merged_icon_coordinates, merged_icon_confidences, merged_icon_labels, csv_filename, th):
     num_bbox = len(merged_icon_coordinates)
     filename_ext = f"{pic}.png"
 
-    set_clickable = {'square','rectangular','input box','button','arrow','link text','icons','penguin','cross','blue icons','blue','toolbar icons','gray area',"clickable area",'red button','blue button','rectangular'}
-    set_selectable = {'circle buttons','checkbox'}
+    set_clickable = {'rectangular','blue button','text','plus','red button','red icon','dashed box','square','input box','button','arrow','link text','icons','penguin','minus','cross','blue icons','blue','toolbar icons','toolbar icon','gray area',"clickable area"}
+    set_selectable = {'circle button','circle buttons','checkbox'}
     set_scrollable = {'scrollbar','triangle','combo box'}
     
     with open(csv_filename, mode='a', newline='', encoding='utf-8') as csvfile:
@@ -487,7 +520,7 @@ csv_filename = "./output/jiguang/"
 text_coords_root = "./text_coords/jiguang/"
 
 # 选择需要检测的文件
-pic = "frame_49_48"
+pic = "frame_2_1"
 #screenshot_file = f"{screenshot_root}{pic}.png"
 screenshot_file = f"{screen_root}{pic}/remove1.png"
 xml_file = f"{screenshot_root}{pic}.xml"
@@ -496,11 +529,11 @@ screenshot_som_file = f"{screen_root}{pic}/"
 text_coords_save_file = f"{text_coords_root}{pic}.pkl"
 
 # 单提示词
-caption = "square"
-sub_num = 1
+caption = "checkbox"
+sub_num = 9
 bbox_th = 0.1
 text_only = False
-icon_only = True
+icon_only = False
 clear_ocr = True
 load_ocr = True
 
@@ -517,10 +550,10 @@ icon_coordinates, icon_confidences, icon_labels = get_perception_infos(screensho
 #filename = f"{screenshot_som_file}{caption}_{sub_num}.png"
 #draw_boxes_in_format(screenshot_file, copy.deepcopy(icon_coordinates), copy.deepcopy(icon_confidences), copy.deepcopy(icon_labels), filename, font_path, bbox_th=bbox_th, with_text=True)
 tmp_file = f"{screenshot_som_file}remove_{caption}"
-clear_det_from_img(icon_coordinates, screenshot_file, tmp_file, icon_confidences, 0.1)
+clear_det_from_img(icon_coordinates, screenshot_file, tmp_file, icon_confidences, 0.4)
 
 csv_filename = f"{csv_filename}{pic}.csv"
-gen_csv(icon_coordinates, icon_confidences, icon_labels, csv_filename, 0.1)
+gen_csv(icon_coordinates, icon_confidences, icon_labels, csv_filename, 0.4)
 
 
 # 多提示词
