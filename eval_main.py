@@ -107,7 +107,7 @@ def TP_P_num_sum(csv_results, threshod, IOU_THRESH,ERR_S,IMG_ROOT,XML_ROOT,OTT_I
     return TP_num_sum, P_num_sum
 
 
-def run(eval_output):
+def run(eval_output,IMG_ROOT,XML_ROOT,CLASS_NAME,IOU_THRESH,ERR_S,CSV_PATH):
     # 计算所有图像group truth的bbox个数，由于存在某些存在group truth的图片，没有预测到任何bbox，所以召回率的分母
     # 需要从所有测试图片的xml文件中累加得到
     group_truth_num_sum = 0
@@ -153,17 +153,34 @@ def run(eval_output):
         csv_write.writerow(('group_truth_num_sum:{}'.format(group_truth_num_sum), '', ''))
     drawing(recalls, precisions, CLASS_NAME, IOU_THRESH, ap, eval_output,CSV_PATH)
 
-
+import argparse
 if __name__ == '__main__':
-    IOU_THRESH = 0.3                         # IOU
-    ERR_S = 0.3                            # 可视化阈值下的错误图片坐标。为0不写，为0.3即分析该阈值下的
-    IMG_ROOT = r'E:\cv_final\cv_project_cyd\dataset\test_dataset\jiguang\pngs'   # 图片路径
-    XML_ROOT = r'E:\cv_final\cv_project_cyd\dataset\test_dataset\jiguang\xmls'   # ground truth:图片对应xml标注文件路径 
-    OTT_IMG_ROOT = r'E:\cv_final\cv_project_cyd\eval_output'  # 漏报误报错误可视化图片路径
-    CSV_PATH = r'E:\cv_final\cv_project_cyd\output\jiguang\frame_3_1.csv'       # our prediction算法输出结果： img_name, x_min y_min w h, confidence, CLASS_NAME   
-    eval_output = "./eval_output/jiguang/"
-    CLASS_NAME = 'clickable'
+    parser = argparse.ArgumentParser(description='评估参数设置')
+    parser.add_argument('--iou_thresh', type=float, default=0.3, help='IOU阈值')
+    parser.add_argument('--err_s', type=float, default=0.3, help='可视化阈值下的错误图片坐标')
+    parser.add_argument('--img_root', type=str, required=True, help='图片路径')
+    parser.add_argument('--xml_root', type=str, required=True, help='XML标注文件路径')
+    parser.add_argument('--ott_img_root', type=str, required=True, help='错误可视化图片路径')
+    parser.add_argument('--csv_root', type=str, required=True, help='算法输出结果CSV路径')
+    parser.add_argument('--eval_output', type=str, default='./eval_output/jiguang/', help='评估输出路径')
+    parser.add_argument('--class_name', type=str, default='clickable', help='类别名称')
 
+    args = parser.parse_args()  # 解析命令行参数
+
+    # 使用解析的参数
+    IOU_THRESH = args.iou_thresh
+    ERR_S = args.err_s
+    IMG_ROOT = args.img_root
+    XML_ROOT = args.xml_root
+    OTT_IMG_ROOT = args.ott_img_root
+    CSV_ROOT = args.csv_root
+    eval_output = args.eval_output
+    CLASS_NAME = args.class_name
+    csv_paths = os.listdir(CSV_ROOT)
+    csv_paths = [os.path.join(CSV_ROOT, p) for p in csv_paths if p.endswith('.csv')]
     #get_csv_coding(CSV_PATH)
-    run(eval_output)
+    for csv_path in csv_paths:
+        for class_name in CLASS_NAME:
+            run(eval_output,IMG_ROOT,XML_ROOT,class_name,IOU_THRESH,ERR_S,csv_path)
     #err_drawing(CLASS_NAME, ERR_S, IMG_ROOT, OTT_IMG_ROOT) #可以看到哪些框标错了
+

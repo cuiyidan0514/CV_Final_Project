@@ -3,3 +3,7 @@
 /dataset/
 *.pyc
 __pycache__/
+/output/
+/eval_output/
+/eval_wrong/
+/screenshot/
