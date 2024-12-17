@@ -1,5 +1,7 @@
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import numpy as np
+# modelscope用于加载和使用深度学习模型
 # modelscope用于加载和使用深度学习模型
 from modelscope.pipelines import pipeline
 from modelscope.utils.constant import Tasks
@@ -7,12 +9,15 @@ from modelscope import snapshot_download
 import concurrent.futures
 import os
 # PCAgent包含自定义的图像处理和目标检测功能
+# PCAgent包含自定义的图像处理和目标检测功能
 from PCAgent.text_localization import ocr
 from PCAgent.icon_localization import det
 from PCAgent.merge_strategy import merge_boxes_and_texts, merge_all_icon_boxes,merge_boxes_and_texts_new, merge_buttons_and_texts, merge_all_boxes_on_logits, merge_min_boxes, merge_texts_and_icons
 from run_original import split_image_into_4,split_image_into_16,split_image_into_36,draw_coordinates_boxes_on_image,split_image_into_16_and_shift,split_image_into_25,text_draw_coordinates_boxes_on_image,split_image_into_9,draw_boxes_in_format
 from detect_root_area import detect_root_area
 import copy
+
+import csv
 
 import csv
 import xml.etree.ElementTree as ET
@@ -25,7 +30,9 @@ from collections import Counter
 groundingdino_dir = snapshot_download('AI-ModelScope/GroundingDINO', revision='v1.0.0')
 groundingdino_model = pipeline('grounding-dino-task', model=groundingdino_dir)
 # 用于检测图像中的文字区域
+# 用于检测图像中的文字区域
 ocr_detection = pipeline(Tasks.ocr_detection, model='damo/cv_resnet18_ocr-detection-line-level_damo')
+# 用于识别文本内容
 # 用于识别文本内容
 ocr_recognition = pipeline(Tasks.ocr_recognition, model='damo/cv_convnextTiny_ocr-recognition-document_damo')
 
@@ -39,6 +46,7 @@ caption_call_method = "local"
 font_path = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf" #! for linux
 temp_file = "temp"
 
+caption = "circle buttons"
 
 # 从原图中将root区域裁剪出来:基于gt
 def extract_root_from_image(screenshot_file, xml_file, output_file, clear_ocr=False):
@@ -247,11 +255,13 @@ def get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_
         # 获得ocr字符框列表和文字列表
         sub_text, sub_coordinates = ocr(img, ocr_detection, ocr_recognition)
         # 将字符框的坐标都调整成在原图中的坐标
+        # 将字符框的坐标都调整成在原图中的坐标
         for coordinate in sub_coordinates:
             coordinate[0] = int(max(0, img_x_list[i] + coordinate[0] - padding))
             coordinate[2] = int(min(total_width, img_x_list[i] + coordinate[2] + padding))
             coordinate[1] = int(max(0, img_y_list[i] + coordinate[1] - padding))
             coordinate[3] = int(min(total_height,img_y_list[i] + coordinate[3] + padding))
+        # 将每个子图调整后的字符框坐标和文本合并
         # 将每个子图调整后的字符框坐标和文本合并
         sub_text_merge, sub_coordinates_merge = merge_boxes_and_texts_new(sub_text, sub_coordinates)
         text_coordinates.extend(sub_coordinates_merge)
@@ -287,6 +297,8 @@ def get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_
     coordinates = []
     confidences = []
     labels = []
+    confidences = []
+    labels = []
     # detection module using groundingdino
     for i, img in enumerate(img_list):
         sub_coordinates, sub_confidences, sub_labels = det(img, caption, groundingdino_model, text_threshold=text_th, box_threshold=bbox_th)
@@ -297,6 +309,8 @@ def get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_
             coordinate[2] = int(min(total_width, img_x_list[i] + coordinate[2] + padding))
             coordinate[1] = int(max(0, img_y_list[i] + coordinate[1] - padding))
             coordinate[3] = int(min(total_height, img_y_list[i] + coordinate[3] + padding))
+        # 合并调整后的坐标
+        sub_coordinates,sub_confidences,sub_labels = merge_all_icon_boxes(sub_coordinates,sub_confidences,sub_labels)
         # 合并调整后的坐标
         sub_coordinates,sub_confidences,sub_labels = merge_all_icon_boxes(sub_coordinates,sub_confidences,sub_labels)
         coordinates.extend(sub_coordinates)

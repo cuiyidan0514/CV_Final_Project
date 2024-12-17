@@ -4,6 +4,7 @@ from PIL import Image
 import torch
 
 def remove_boxes(boxes_filt, confidences_filt, labels_filt, size, iou_threshold=0.5):
+def remove_boxes(boxes_filt, confidences_filt, labels_filt, size, iou_threshold=0.5):
     boxes_to_remove = set()
 
     for i in range(len(boxes_filt)):
@@ -23,7 +24,10 @@ def remove_boxes(boxes_filt, confidences_filt, labels_filt, size, iou_threshold=
     boxes_filt = [box for idx, box in enumerate(boxes_filt) if idx not in boxes_to_remove]
     confidences_filt = [confidence for idx, confidence in enumerate(confidences_filt) if idx not in boxes_to_remove]
     labels_filt = [label for idx, label in enumerate(labels_filt) if idx not in boxes_to_remove]
+    confidences_filt = [confidence for idx, confidence in enumerate(confidences_filt) if idx not in boxes_to_remove]
+    labels_filt = [label for idx, label in enumerate(labels_filt) if idx not in boxes_to_remove]
     
+    return boxes_filt, confidences_filt, labels_filt
     return boxes_filt, confidences_filt, labels_filt
 
 
@@ -32,11 +36,13 @@ def det(input_image_path, caption, groundingdino_model, box_threshold=0.1, text_
     image = Image.open(input_image_path)
     size = image.size
     # print(size)
+    # print(size)
     caption = caption.lower()
     caption = caption.strip()
     if not caption.endswith('.'):
         caption = caption + '.'
     
+    # 格式化输入
     # 格式化输入
     inputs = {
         'IMAGE_PATH': input_image_path,
@@ -63,8 +69,28 @@ def det(input_image_path, caption, groundingdino_model, box_threshold=0.1, text_
     # print("Detected BBoxes:", boxes_filt)  
     # print("Detected Confidences:", confidences_filt)  
     # print("Detected Labels:", labels_filt)
+    # 调用groundingdino模型，输入字典，获得检测框
+    result = groundingdino_model(inputs) 
+    bboxes = result['boxes']
+    confidences = result['logits']
+    labels = result['phrases']
+
+    boxes_filt = []
+    confidences_filt = []
+    labels_filt = []
+    for bbox, confidence, label in zip(bboxes, confidences, labels):
+        if label:
+            boxes_filt.append(bbox)
+            confidences_filt.append(confidence)
+            labels_filt.append(label)
+
+    # print("Detected BBoxes:", boxes_filt)  
+    # print("Detected Confidences:", confidences_filt)  
+    # print("Detected Labels:", labels_filt)
 
     H, W = size[1], size[0]
+    # 遍历每个预测框，将框的坐标按照原图的尺寸进行调整，转换为左上角和右下角坐标
+    for i in range(len(boxes_filt)):
     # 遍历每个预测框，将框的坐标按照原图的尺寸进行调整，转换为左上角和右下角坐标
     for i in range(len(boxes_filt)):
         boxes_filt[i] = boxes_filt[i] * torch.Tensor([W, H, W, H])
@@ -78,8 +104,20 @@ def det(input_image_path, caption, groundingdino_model, box_threshold=0.1, text_
     print("Filtered Confidences:", filtered_confidences)  
     print("Filtered Labels:", filtered_labels)
 
+    boxes_filt = [box.cpu().int().tolist() for box in boxes_filt]
+    # 过滤掉不合适的框，只保留前9个框
+    filtered_boxes, filtered_confidences, filtered_labels = remove_boxes(boxes_filt, confidences_filt, labels_filt, size)  # [:9]
+    print("Filtered BBoxes:", filtered_boxes)  
+    print("Filtered Confidences:", filtered_confidences)  
+    print("Filtered Labels:", filtered_labels)
+
     coordinates = []
     for box in filtered_boxes:
+        b0 = int(box[0]/scale)
+        b1 = int(box[1]/scale)
+        b2 = int(box[2]/scale)
+        b3 = int(box[3]/scale)
+        coordinates.append([b0,b1,b2,b3])
         b0 = int(box[0]/scale)
         b1 = int(box[1]/scale)
         b2 = int(box[2]/scale)
