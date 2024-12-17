@@ -83,14 +83,17 @@ def draw_boxes_in_format(image_path, coordinates, logits, labels, output_image_p
         
     label_colors = {}
     font = ImageFont.truetype(font_path, int(height * 0.012))
-    set_select = {'circle buttons','checkbox'}
-    set_click = {'rectangular','arrow','icons'}
-
+    set_click = labels['clickable']
+    set_select = labels['selectable']
+    set_scroll = labels['scrollable']
+    
     for i, (coord,label,logit) in enumerate(zip(coordinates,labels,logits)):
         if label in set_click:
             label = 'clickable'
         elif label in set_select:
             label = 'selectable'
+        elif label in set_scroll:
+            label = 'scrollable'
         else:
             label = 'disabled'
         if label not in label_colors:
@@ -342,32 +345,60 @@ def generate_api(images, query):
     return icon_map
 
 
-def split_image_into_4(input_image_path, output_image_prefix, xmin, ymin):
+def split_image_into_4(input_image_path, output_image_prefix, xmin, ymin,mini=True):
     img = Image.open(input_image_path)
     width, height = img.size
 
     sub_width = width // 2
     sub_height = height // 2
 
-    # crop into 4 sub images
-    quadrants = [
-        (0, 0, sub_width, sub_height),
-        (sub_width, 0, width, sub_height),
-        (0, sub_height, sub_width, height),
-        (sub_width, sub_height, width, height)
-    ]
+    if mini:
+        # crop into 4 sub images
+        quadrants = [
+            (0, 0, sub_width, sub_height),
+            (sub_width, 0, width, sub_height),
+            (0, sub_height, sub_width, height),
+            (sub_width, sub_height, width, height)
+        ]
 
-    for i, box in enumerate(quadrants):
-        sub_img = img.crop(box)
-        sub_img.save(f"{output_image_prefix}_part_{i+1}.png")
-    
-    img_list = ['./screenshot/sub4/screenshot_part_1.png', './screenshot/sub4/screenshot_part_2.png',
-                './screenshot/sub4/screenshot_part_3.png', './screenshot/sub4/screenshot_part_4.png']
-    img_x_list = [0, width/2, 0, width/2]
-    img_y_list = [0, 0, height/2, height/2]
-    img_x_list = [x + xmin for x in img_x_list]
-    img_y_list = [y + ymin for y in img_y_list]
-    return img_list, img_x_list, img_y_list
+        for i, box in enumerate(quadrants):
+            sub_img = img.crop(box)
+            sub_img.save(f"{output_image_prefix}_part_{i+1}.png")
+        
+        img_list = ['./screenshot/sub4/screenshot_part_1.png', './screenshot/sub4/screenshot_part_2.png',
+                    './screenshot/sub4/screenshot_part_3.png', './screenshot/sub4/screenshot_part_4.png']
+        img_x_list = [0, width/2, 0, width/2]
+        img_y_list = [0, 0, height/2, height/2]
+        img_x_list = [x + xmin for x in img_x_list]
+        img_y_list = [y + ymin for y in img_y_list]
+        return img_list, img_x_list, img_y_list
+    else:
+        quadrants = [
+                (0, 0, sub_width, sub_height),
+                (sub_width, 0, width, sub_height),
+                (0, sub_height, sub_width, height),
+                (sub_width, sub_height, width, height),
+                (sub_width/2, 0, 3*sub_width/2, sub_height),
+                (0, sub_height/2, sub_width, 3*sub_height/2),
+                (sub_width/2, sub_height/2, 3*sub_width/2, 3*sub_height/2),
+                (sub_width, sub_height/2, width, 3*sub_height/2),
+                (sub_width/2, sub_height, 3*sub_width/2, height)
+            ]
+
+        for i, box in enumerate(quadrants):
+            sub_img = img.crop(box)
+            sub_img.save(f"{output_image_prefix}_part_{i+1}.png")
+        
+        img_list = ['./screenshot/sub4/screenshot_part_1.png', './screenshot/sub4/screenshot_part_2.png',
+                    './screenshot/sub4/screenshot_part_3.png', './screenshot/sub4/screenshot_part_4.png',
+                    './screenshot/sub4/screenshot_part_5.png', './screenshot/sub4/screenshot_part_6.png',
+                    './screenshot/sub4/screenshot_part_7.png', './screenshot/sub4/screenshot_part_8.png',
+                    './screenshot/sub4/screenshot_part_9.png']
+        img_x_list = [0, width/2, 0, width/2, sub_width/2, 0, sub_width/2, sub_width, sub_width/2]
+        img_y_list = [0, 0, height/2, height/2, 0, sub_height/2, sub_height/2, sub_height/2, sub_height]
+        img_x_list = [x + xmin for x in img_x_list]
+        img_y_list = [y + ymin for y in img_y_list]
+        return img_list, img_x_list, img_y_list
 
 # def split_image_into_4(input_image_path, output_image_prefix, xmin, ymin):
 #     img = Image.open(input_image_path)

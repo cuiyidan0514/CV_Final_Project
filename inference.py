@@ -273,7 +273,6 @@ class DetectionProcessor:
         return output_name
     
     def get_ocr_from_different_levels(self,xmin,ymin,screenshot_file,output,output_file):
-
         total_width, total_height = Image.open(screenshot_file).size
         # 将root分割成若干份子图输入
         
@@ -343,40 +342,59 @@ class DetectionProcessor:
 
         filename = os.path.splitext(os.path.basename(screenshot_file))[0]
         root_file = f"{output_file}root.png"
-        if load_ocr:
+        #! not needed?
+        # if load_ocr:
+        #     with open(self.text_coords_save_file,'rb') as f:
+        #         data = pickle.load(f)
+        #         merged_text_coordinates = data['ocr']
+        #         merged_text_coordinates_4 = data['ocr_4']
+                
+        # else:
+        #     merged_text_coordinates, merged_text_coordinates_4 = self.get_ocr_from_different_levels(xmin,ymin,screenshot_file,output_file,root_file)
+        #     with open(self.text_coords_save_file,'wb') as f:
+        #         ocr_to_save = {'ocr':merged_text_coordinates,'ocr_4':merged_text_coordinates_4}
+        #         pickle.dump(ocr_to_save,f)
+
+        # split image into sub images
+        if sub_num == 4:
+            img_list, img_x_list, img_y_list = split_image_into_4(root_file, './screenshot/sub4/screenshot', xmin, ymin,self.mini)
+        elif sub_num == 9:
+            img_list, img_x_list, img_y_list = split_image_into_9(root_file, './screenshot/sub9/screenshot9', xmin, ymin)
+        elif sub_num == 16:
+            img_list, img_x_list, img_y_list = split_image_into_16(root_file, './screenshot/sub16/screenshot16', xmin, ymin)
+        elif sub_num == 25:
+            img_list, img_x_list, img_y_list = split_image_into_25(root_file, './screenshot/sub25/screenshot25', xmin, ymin)
+        elif sub_num == 36:
+            img_list, img_x_list, img_y_list = split_image_into_36(root_file, './screenshot/sub36/screenshot36', xmin, ymin)
+        else:
+            img_list, img_x_list, img_y_list = [root_file], [xmin], [ymin]
+        # detection module using ocr
+        text_coordinates = []
+        texts = []
+        padding = total_height * 0.0025  # 10 生产字符框的合适间距   
+        if self.load_ocr:
             with open(self.text_coords_save_file,'rb') as f:
                 data = pickle.load(f)
                 merged_text_coordinates = data['ocr']
                 merged_text_coordinates_4 = data['ocr_4']
-                
         else:
-            merged_text_coordinates, merged_text_coordinates_4 = self.get_ocr_from_different_levels(xmin,ymin,screenshot_file,output_file,root_file)
-            with open(self.text_coords_save_file,'wb') as f:
-                ocr_to_save = {'ocr':merged_text_coordinates,'ocr_4':merged_text_coordinates_4}
-                pickle.dump(ocr_to_save,f)
-
-        # detection module using ocr
-        img_list, img_x_list, img_y_list = split_image_into_4(root_file, './screenshot/sub4/screenshot', xmin, ymin)
-        text_coordinates = []
-        texts = []
-        padding = total_height * 0.0025  # 10 生产字符框的合适间距   
-        for i, img in enumerate(img_list):
-            # 获得ocr字符框列表和文字列表
-            sub_text, sub_coordinates = ocr(img, self.ocr_detection, self.ocr_recognition)
-            # 将字符框的坐标都调整成在原图中的坐标
-            for coordinate in sub_coordinates:
-                coordinate[0] = int(max(0, img_x_list[i] + coordinate[0] - padding))
-                coordinate[2] = int(min(total_width, img_x_list[i] + coordinate[2] + padding))
-                coordinate[1] = int(max(0, img_y_list[i] + coordinate[1] - padding))
-                coordinate[3] = int(min(total_height,img_y_list[i] + coordinate[3] + padding))
-            # 将每个子图调整后的字符框坐标和文本合并
-            sub_text_merge, sub_coordinates_merge = merge_boxes_and_texts_new(sub_text, sub_coordinates)
-            text_coordinates.extend(sub_coordinates_merge)
-            texts.extend(sub_text_merge)
-        # 将所有子图的字符框和文本合并
-        _, merged_text_coordinates_4 = merge_boxes_and_texts(texts, text_coordinates)
-        text_draw_coordinates_boxes_on_image(screenshot_file, merged_text_coordinates_4, self.screenshot_som_file)
-        
+            for i, img in enumerate(img_list):
+                # 获得ocr字符框列表和文字列表
+                sub_text, sub_coordinates = ocr(img, self.ocr_detection, self.ocr_recognition)
+                # 将字符框的坐标都调整成在原图中的坐标
+                for coordinate in sub_coordinates:
+                    coordinate[0] = int(max(0, img_x_list[i] + coordinate[0] - padding))
+                    coordinate[2] = int(min(total_width, img_x_list[i] + coordinate[2] + padding))
+                    coordinate[1] = int(max(0, img_y_list[i] + coordinate[1] - padding))
+                    coordinate[3] = int(min(total_height,img_y_list[i] + coordinate[3] + padding))
+                # 将每个子图调整后的字符框坐标和文本合并
+                sub_text_merge, sub_coordinates_merge = merge_boxes_and_texts_new(sub_text, sub_coordinates)
+                text_coordinates.extend(sub_coordinates_merge)
+                texts.extend(sub_text_merge)
+            # 将所有子图的字符框和文本合并
+            merged_text_coordinates, merged_text_coordinates_4 = merge_boxes_and_texts(texts, text_coordinates)
+            text_draw_coordinates_boxes_on_image(screenshot_file, merged_text_coordinates_4, self.my_screenshot_som_file)
+            
         if clear_ocr:
             output_file_name2 = self.clear_ocr_from_img(merged_text_coordinates, screenshot_file, output_file)
             # 根据xml裁剪root区域，并保存至root.png
@@ -388,25 +406,14 @@ class DetectionProcessor:
             #     root_file = f"{output_file}root_clear_ocr.png"
             #     cropped_img.save(root_file)
 
-        if sub_num == 4:
-            img_list, img_x_list, img_y_list = split_image_into_4(root_file, './screenshot/sub4/screenshot', xmin, ymin)
-        elif sub_num == 9:
-            img_list, img_x_list, img_y_list = split_image_into_9(root_file, './screenshot/sub9/screenshot9', xmin, ymin)
-        elif sub_num == 16:
-            img_list, img_x_list, img_y_list = split_image_into_16(root_file, './screenshot/sub16/screenshot16', xmin, ymin)
-        elif sub_num == 25:
-            img_list, img_x_list, img_y_list = split_image_into_25(root_file, './screenshot/sub25/screenshot25', xmin, ymin)
-        elif sub_num == 36:
-            img_list, img_x_list, img_y_list = split_image_into_36(root_file, './screenshot/sub36/screenshot36', xmin, ymin)
-        else:
-            img_list, img_x_list, img_y_list = [root_file], [xmin], [ymin]
 
+
+        # detection module using groundingdino
         coordinates = []
         confidences = []
         labels = []
-        # detection module using groundingdino
         for i, img in enumerate(img_list):
-            sub_coordinates, sub_confidences, sub_labels = det(img, caption, self.groundingdino_model, text_threshold=text_th, box_threshold=bbox_th)
+            sub_coordinates, sub_confidences, sub_labels = det(img, caption, self.dino_model, text_threshold=text_th, box_threshold=bbox_th)
 
             # 将子图坐标调整到原图中的坐标
             for coordinate in sub_coordinates:
@@ -542,11 +549,16 @@ class DetectionProcessor:
             self.load_ocr = True
             self.icon_only = True
             self.text_only = False
-            set_clickable = {'square','rectangular','input box','button','arrow','link text','icons','penguin','cross','blue icons','blue','toolbar icons','gray area',"clickable area",'red button','blue button','rectangular','toolbar icon'}
-            set_selectable = {'circle buttons','checkbox'}
-            set_scrollable = {'scrollbar','triangle','combo box','sliding area'}
+            self.mini = True
+            # set_clickable = {'square','rectangular','input box','button','arrow','link text','icons','penguin','cross','blue icons','blue','toolbar icons','gray area',"clickable area",'red button','blue button','rectangular','toolbar icon'}
+            if self.mini:
+                set_clickable = {'square','rectangular','input_box','button','arrow','link_text','icons','cross','toolbar_icons',"clickable_area",'rectangular','toolbar_icon'}
+            else:
+                set_clickable = {'square','rectangular','input box','button','arrow','link text','icons','penguin','cross','blue icons','blue','toolbar icons','gray area',"clickable area",'red button','blue button','rectangular','toolbar icon'}
+            set_selectable = {'circle_buttons','checkbox'}
+            set_scrollable = {'scrollbar','triangle','combo_box','sliding_area'}
             self.caption = {'set_clickable':set_clickable,'set_selectable':set_selectable,'set_scrollable':set_scrollable}
-            self.all_caption = list(set_clickable | set_selectable | set_scrollable)
+            self.all_caption = ' .'.join(list(set_clickable | set_selectable | set_scrollable))
 
 import argparse
 if __name__ == "__main__":
