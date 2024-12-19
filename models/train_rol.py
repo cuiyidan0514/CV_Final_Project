@@ -17,7 +17,7 @@ def create_data_loaders(root_dir, batch_size=32):
     
     # 计算划分长度
     total_size = len(full_dataset)
-    train_size = int(0.6 * total_size)
+    train_size = int(0.75 * total_size)
     test_size = total_size - train_size
     
     # 随机划分数据集
