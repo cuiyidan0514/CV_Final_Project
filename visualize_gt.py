@@ -31,6 +31,19 @@ def _get_label_id(label):
     }  
     return label_map.get(label, -1)  
 
+def get_gt_label(xml_file):
+    tree = ET.parse(xml_file)
+    root = tree.getroot()
+    for obj in root.findall('object'):
+        name = obj.find('name').text
+        bndbox = obj.find('bndbox')
+        label = _get_label_id(name)
+        xmin = int(bndbox.find('xmin').text)
+        ymin = int(bndbox.find('ymin').text)
+        xmax = int(bndbox.find('xmax').text)
+        ymax = int(bndbox.find('ymax').text)
+        return label, xmin, ymin, xmax, ymax
+
 def visualize_bbox(image_path):
     image = Image.open(image_path)
     draw = ImageDraw.Draw(image)
@@ -75,8 +88,15 @@ def visualize_bbox(image_path):
     save_path = image_path.replace('.png', '_annotated.png')
     image.save(save_path)  # 保存图片
 
-import os
-dataset_dir = './dataset/train_dataset/jiguang'
-for image_path in os.listdir(dataset_dir):
-    if image_path.endswith('.png') and 'annotated' not in image_path:
-        visualize_bbox(os.path.join(dataset_dir, image_path))
+
+
+def main():
+    import os
+    dataset_dir = './dataset/train_dataset/jiguang'
+    for image_path in os.listdir(dataset_dir):
+        if image_path.endswith('.png') and 'annotated' not in image_path:
+            visualize_bbox(os.path.join(dataset_dir, image_path))
+
+if __name__ == '__main__':
+    main()
+

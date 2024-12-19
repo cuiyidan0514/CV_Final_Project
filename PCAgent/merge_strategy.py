@@ -337,35 +337,63 @@ def merge_min_boxes(cur_coords, pre_coords):
     return result_bboxes
 
 
-def merge_all_icon_boxes(bboxes,confidences,labels):
-    result_bboxes = []
-    result_cons = []
-    result_labels = []
-    while bboxes:
-        bbox = bboxes.pop(0)
-        confidence = confidences.pop(0)
-        label = labels.pop(0)
-        to_add = True
-
-        for idx, existing_bbox in enumerate(result_bboxes):
-            if is_contained(bbox, existing_bbox):
-                if get_area(bbox) > get_area(existing_bbox):
-                    result_bboxes[idx] = existing_bbox
-                to_add = False
+def merge_all_icon_boxes(bboxes, **kwargs):
+    """
+    灵活处理任意数量的相关变量的框合并函数
+    
+    Args:
+        bboxes: numpy array of shape (N, 4) 或 list of boxes
+        **kwargs: 任意与bboxes长度相同的变量
+        
+    Returns:
+        dict: 包含所有处理后的变量，键为原变量名，值为mask后的结果
+        例如：{'bboxes': masked_boxes, 'confidences': masked_confidences, ...}
+    """
+    # 转换为numpy数组以加速计算
+    bboxes = np.array(bboxes)
+    N = len(bboxes)
+    mask = np.ones(N, dtype=bool)
+    areas = (bboxes[:, 2] - bboxes[:, 0]) * (bboxes[:, 3] - bboxes[:, 1])
+    
+    # 检查和预处理输入变量
+    valid_kwargs = {}
+    for key, value in kwargs.items():
+        if len(value) == N:  # 只处理长度匹配的变量
+            valid_kwargs[key] = np.array(value) if not isinstance(value, np.ndarray) else value
+    
+    for i in range(N):
+        if not mask[i]:
+            continue
+            
+        # 计算当前框与所有其他框的IoU
+        ious = np.zeros(N)
+        for j in range(i + 1, N):
+            if mask[j]:
+                ious[j] = calculate_iou(bboxes[i], bboxes[j])
+        
+        overlap_indices = np.where((ious > 1e-2) & mask)[0]
+        
+        for j in overlap_indices:
+            # 检查包含关系
+            if is_contained(bboxes[i], bboxes[j]):
+                if areas[i] > areas[j]:
+                    mask[j] = False
+                else:
+                    mask[i] = False
+                    break
+            # 检查重叠关系
+            elif areas[i] < areas[j]:
+                mask[j] = False
+            else:
+                mask[i] = False
                 break
-            elif is_overlapping(bbox, existing_bbox) and calculate_iou(bbox, existing_bbox) > 1e-2:
-                #print(calculate_iou(bbox, existing_bbox))
-                if get_area(bbox) < get_area(existing_bbox):
-                    result_bboxes[idx] = bbox
-                to_add = False
-                break
-
-        if to_add:
-            result_bboxes.append(bbox)
-            result_cons.append(confidence)
-            result_labels.append(label)
-
-    return result_bboxes, result_cons, result_labels
+    
+    # 准备返回结果
+    results = {'bboxes': bboxes[mask]}
+    for key, value in valid_kwargs.items():
+        results[key] = value[mask]
+        
+    return results
 
 
 def merge_bbox_groups(A, B, iou_threshold=0.8):

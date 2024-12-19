@@ -7,3 +7,5 @@ __pycache__/
 /eval_output/
 /eval_wrong/
 /screenshot/
+*.ckpt
+/runs/

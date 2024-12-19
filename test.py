@@ -255,13 +255,11 @@ def get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_
         # 获得ocr字符框列表和文字列表
         sub_text, sub_coordinates = ocr(img, ocr_detection, ocr_recognition)
         # 将字符框的坐标都调整成在原图中的坐标
-        # 将字符框的坐标都调整成在原图中的坐标
         for coordinate in sub_coordinates:
             coordinate[0] = int(max(0, img_x_list[i] + coordinate[0] - padding))
             coordinate[2] = int(min(total_width, img_x_list[i] + coordinate[2] + padding))
             coordinate[1] = int(max(0, img_y_list[i] + coordinate[1] - padding))
             coordinate[3] = int(min(total_height,img_y_list[i] + coordinate[3] + padding))
-        # 将每个子图调整后的字符框坐标和文本合并
         # 将每个子图调整后的字符框坐标和文本合并
         sub_text_merge, sub_coordinates_merge = merge_boxes_and_texts_new(sub_text, sub_coordinates)
         text_coordinates.extend(sub_coordinates_merge)
