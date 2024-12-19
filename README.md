@@ -35,69 +35,11 @@ eval_main.py：计算ap
 运行文件：
 `test.py` 是目前的文件，改`screenshot_file`为需要测试的图片路径，运行即可。
 
-"scrollable”、"clickable”、"selectable”、"disabled"
-scrollable: 
+# train using dino prompt
+1. 主程序为inference.py, run.sh 为其运行文件（需要修改注释）。修改 mode = 'my_train' 即可，其会保存 `hs` 和IoU大于0.2的gt label，用于可能的后续测试为`pkl`文件
+2. 训练代码在 `models/train_dino.py` (未完成)
 
-
-```python
-# 单提示词
-mode = 'baseline'
-if mode == 'baseline':
-    caption = "icons"
-    sub_num = 4
-    bbox_th = 0.1
-    relax = False
-    clear_ocr = False
-    load_ocr = False
-    icon_only = True
-    text_only = False
-if clear_ocr:
-    my_screenshot_som_file = f"{screenshot_som_file}{sub_num}_{caption}_clear_ocr"
-else:
-    my_screenshot_som_file = f"{screenshot_som_file}{sub_num}_{caption}_with_ocr"
-if icon_only:
-    my_screenshot_som_file = f"{my_screenshot_som_file}_icon"
-if text_only:
-    my_screenshot_som_file = f"{my_screenshot_som_file}_text"
-icon_coordinates, icon_confidences, icon_labels = get_perception_infos(screenshot_file,xml_file,output_file,
-my_screenshot_som_file,load_ocr=load_ocr,sub_num=sub_num,bbox_th=bbox_th,caption=caption,icon_only=icon_only,
-text_only=text_only,clear_ocr=clear_ocr)
-filename = f"{screenshot_som_file}{caption}_{sub_num}.png"
-#draw_boxes_in_format(screenshot_file, copy.deepcopy(icon_coordinates), copy.deepcopy(icon_confidences), copy.
-deepcopy(icon_labels), filename, font_path, bbox_th=bbox_th, with_text=True)
-
-
-# 多提示词
-# caption_list = ["icons","arrow"]
-# sub_num = [9,4]
-# bbox_ths = [0.1,0.3]
-# text_only = [False, False]
-# icon_only = [True, True]
-# clear_ocr = [True, True]
-# load_ocr = True
-# for i,(caption,nn,bbox_th,flag,flag1,flag2) in enumerate(zip(caption_list,sub_num,bbox_ths,text_only,icon_only,
-clear_ocr)):
-#     my_screenshot_som_file = f"{screenshot_som_file}_{nn}_{caption}.png"
-#     # 得到的coords彼此之间都互不重叠
-#     coords, logits, labels = get_perception_infos(screenshot_file,xml_file,output_file,my_screenshot_som_file,
-load_ocr=load_ocr,sub_num=nn,bbox_th=bbox_th,caption=caption,text_only=flag,icon_only=flag1,clear_ocr=flag2)
-#     # 将新的caption得到的bbox与已有的bbox合并
-#     if  i == 0:
-#         pre_coords = coords
-#         pre_logits = logits
-#         pre_labels = labels
-#     else:
-#         pre_coords, pre_logits, pre_labels = merge_all_boxes_on_logits(coords, logits, labels, pre_coords, 
-pre_logits, pre_labels)
-
-# icon_coordinates, icon_confidences, icon_labels = merge_all_icon_boxes(pre_coords, pre_logits, pre_labels)
-# filename = f"{screenshot_som_file}{sub_num}.png"
-# draw_coordinates_boxes_on_image(screenshot_file, copy.deepcopy(icon_coordinates), copy.deepcopy
-(icon_confidences), copy.deepcopy(icon_labels), filename, font_path, bbox_th=bbox_ths, with_text=True)
-# draw_boxes_in_format(screenshot_file, copy.deepcopy(icon_coordinates), copy.deepcopy(icon_confidences), copy.
-deepcopy(icon_labels), filename, font_path, bbox_th=bbox_ths, with_text=True)
-
-filename = os.path.splitext(os.path.basename(screenshot_file))[0]
-csv_filename = f"{csv_filename}{filename}.csv"
-gen_csv(icon_coordinates, icon_confidences, icon_labels, csv_filename)
-```
+# train using rol pooling
+1. 修改`models/train_rol.py`中的`train_model`函数，设置`resume=True`，并指定`checkpoint_path`为之前训练好的模型路径
+2. 运行run.sh, 其中的参数设置是为了指定GPU
+3. tensorboard 保存在runs/下, ckpt保存至主目录下
