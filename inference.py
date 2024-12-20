@@ -465,18 +465,19 @@ class DetectionProcessor:
             self.caption = {'set_clickable':set_clickable,'set_selectable':set_selectable,'set_scrollable':set_scrollable}
             # self.all_caption = ' . '.join(list(set_clickable | set_selectable | set_scrollable))
         if mode == 'my_train':
-            set_clickable = {'icon','button'}
-            set_selectable = {'checkbox'}
-            set_scrollable = {'triangle'}
+            set_clickable = {'icon button', 'button', 'input box', 'toolbar icon', 'window control icons'}
+            set_selectable = {'checkbox','circleButtons'}
+            set_scrollable = {'scrollbar','triangle','comboBox','slidingArea','slide bar','dropdown'}
             self.caption = {'set_clickable':set_clickable,'set_selectable':set_selectable,'set_scrollable':set_scrollable}
 
             # self.all_caption = ' . '.join(list(set_clickable | set_selectable | set_scrollable))
             # set_clickable = {'Please detect all icons separately'}
-            self.all_caption =' . '.join(set_clickable)
-            self.sub_num = 9
-            self.text_sub_num = [9]
-            self.text_th = 0.05
-            self.bbox_th = 0.05
+            # self.all_caption =' . '.join(set_clickable)
+            self.all_caption = ' . '.join(list(set_clickable | set_selectable | set_scrollable))
+            self.sub_num = 4
+            self.text_sub_num = [4]
+            self.text_th = 0.10
+            self.bbox_th = 0.10
             self.relax = False
             self.clear_ocr = False
             self.load_ocr = True

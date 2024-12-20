@@ -99,7 +99,6 @@ class UIElementDetector(nn.Module):
         super(UIElementDetector, self).__init__()
         
         # 特征提取
-        # 特征提取 - 减少通道数从64,128变为32,64
         self.features = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=3, padding=1),
             nn.ReLU(inplace=True),
@@ -109,7 +108,6 @@ class UIElementDetector(nn.Module):
             nn.BatchNorm2d(64)
         )
         
-        # ROI Pooling层 - 从7x7减小到5x5
         self.roi_pool = nn.AdaptiveAvgPool2d((5, 5))
         
         # 分类器 - 减少中间层神经元数量
